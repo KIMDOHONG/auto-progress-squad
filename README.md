@@ -2,6 +2,14 @@
 
 > Intel 융합 DX 6기 팀 프로젝트 저장소
 
+## 웹 데모 바로 보기
+
+[🚗 자동진행단 웹앱 실행하기](https://kimdohong.github.io/auto-progress-squad/)
+
+[![GitHub Pages 배포 상태](https://github.com/KIMDOHONG/auto-progress-squad/actions/workflows/pages.yml/badge.svg)](https://github.com/KIMDOHONG/auto-progress-squad/actions/workflows/pages.yml)
+
+공개 데모는 `main` 브랜치에 변경이 병합될 때마다 테스트와 빌드를 통과한 최신 버전으로 자동 갱신됩니다. Pull Request 검토 중인 변경은 병합되기 전까지 공개 데모에 반영되지 않습니다.
+
 - 팀명: **자동진행단**
 - 프로젝트명: **사용자 차량 프로필 기반 통합 자동차 AI 코파일럿**
 - 프로젝트 기간: 2026-08-24 ~ 2026-09-09
