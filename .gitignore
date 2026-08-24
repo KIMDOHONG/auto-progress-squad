@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# C/C++ and build
+build/
+cmake-build-*/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+
+# Node
+node_modules/
+dist/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Large/generated artifacts
+artifacts/
+outputs/
+logs/
+*.onnx
+*.bin
+*.blob
+*.pt
+*.pth
+*.ckpt
+*.zip

@@ -1,0 +1,37 @@
+name: 버그 보고
+description: 재현 가능한 문제를 기록합니다.
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 증상
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 재현 절차
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 결과
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 로그와 증거
+      description: 비밀정보와 개인정보를 제거하세요.
+  - type: textarea
+    id: environment
+    attributes:
+      label: 환경
+      description: OS, 장비, 버전, 브랜치 또는 커밋을 적으세요.

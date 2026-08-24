@@ -1,0 +1,45 @@
+name: repository-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  structure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify required project files
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            README.md
+            AGENTS.md
+            docs/problem-definition.md
+            docs/use-cases.md
+            docs/architecture.md
+            docs/roles.md
+            tests/README.md
+          )
+          for path in "${required[@]}"; do
+            test -f "$path" || { echo "Missing required file: $path"; exit 1; }
+          done
+
+      - name: Check unresolved merge markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE '^(<<<<<<<|=======|>>>>>>>)'             --exclude-dir=.git .; then
+            echo "Unresolved merge marker found."
+            exit 1
+          fi
+
+      - name: Next CI step
+        run: echo "Add language-specific lint and unit tests after the stack is selected."
