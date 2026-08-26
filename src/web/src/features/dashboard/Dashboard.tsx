@@ -33,7 +33,7 @@ export function Dashboard({ vehicle, onNavigate }: DashboardProps) {
           </button>
         ))}
       </div>
-      <div className="status-strip"><span className="status-dot" /><div><strong>현재는 프런트엔드 MVP입니다.</strong><span>외부 API와 AI 모델 결과는 아직 연결하지 않았으며 샘플 상태만 표시합니다.</span></div></div>
+      <div className="status-strip"><span className="status-dot" /><div><strong>차량 개인화는 FastAPI와 연결할 수 있습니다.</strong><span>지도·충전소·주유소 API와 AI 모델은 아직 연결하지 않았으며 샘플 상태만 표시합니다.</span></div></div>
     </section>
   );
 }

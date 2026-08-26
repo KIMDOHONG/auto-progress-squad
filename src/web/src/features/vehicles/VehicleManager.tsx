@@ -16,23 +16,24 @@ interface VehicleManagerProps {
   vehicles: VehicleProfile[];
   activeVehicleId: string;
   onClose: () => void;
-  onSelect: (vehicleId: string) => void;
-  onAdd: (vehicle: VehicleProfile) => boolean;
-  onUpdate: (vehicle: VehicleProfile) => void;
-  onDelete: (vehicleId: string) => void;
+  onSelect: (vehicleId: string) => Promise<void>;
+  onAdd: (vehicle: VehicleProfile) => Promise<boolean>;
+  onUpdate: (vehicle: VehicleProfile) => Promise<void>;
+  onDelete: (vehicleId: string) => Promise<void>;
 }
 
 export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, onAdd, onUpdate, onDelete }: VehicleManagerProps) {
   const [draft, setDraft] = useState<VehicleDraft>(EMPTY_DRAFT);
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const isElectric = draft.powertrain === "electric";
 
   function updateDraft<Key extends keyof VehicleDraft>(key: Key, value: VehicleDraft[Key]) {
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     if (!draft.manufacturer.trim() || !draft.model.trim() || !draft.modelYear.trim()) {
@@ -52,18 +53,46 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
         : { fuelGrade: draft.fuelGrade }),
     };
 
-    if (editingVehicleId) {
-      onUpdate(vehicle);
-      setEditingVehicleId(null);
-      setDraft(EMPTY_DRAFT);
-      return;
-    }
+    setIsSaving(true);
+    try {
+      if (editingVehicleId) {
+        await onUpdate(vehicle);
+        setEditingVehicleId(null);
+        setDraft(EMPTY_DRAFT);
+        return;
+      }
 
-    if (!onAdd(vehicle)) {
-      setError("차량은 최대 3대까지 등록할 수 있습니다. 기존 차량을 삭제하거나 수정해 주세요.");
-      return;
+      if (!await onAdd(vehicle)) {
+        setError("차량은 최대 3대까지 등록할 수 있습니다. 기존 차량을 삭제하거나 수정해 주세요.");
+        return;
+      }
+      setDraft(EMPTY_DRAFT);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "차량 정보를 저장하지 못했습니다.");
+    } finally {
+      setIsSaving(false);
     }
-    setDraft(EMPTY_DRAFT);
+  }
+
+  async function handleDelete(vehicleId: string) {
+    setError("");
+    setIsSaving(true);
+    try {
+      await onDelete(vehicleId);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "차량을 삭제하지 못했습니다.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleSelect(vehicleId: string) {
+    setError("");
+    try {
+      await onSelect(vehicleId);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "활성 차량을 변경하지 못했습니다.");
+    }
   }
 
   function startEditing(vehicle: VehicleProfile) {
@@ -97,13 +126,13 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
         <div className="vehicle-list">
           {vehicles.map((vehicle) => (
             <article key={vehicle.id} className={vehicle.id === activeVehicleId ? "vehicle-row is-active" : "vehicle-row"}>
-              <button type="button" className="vehicle-row-main" onClick={() => onSelect(vehicle.id)}>
+              <button type="button" className="vehicle-row-main" disabled={isSaving} onClick={() => void handleSelect(vehicle.id)}>
                 <span className="vehicle-row-title">{vehicle.nickname}</span>
                 <span>{getVehicleTitle(vehicle)} · {POWERTRAIN_LABELS[vehicle.powertrain]}</span>
               </button>
               <div className="vehicle-row-actions">
-                <button type="button" className="text-button" onClick={() => startEditing(vehicle)}>수정</button>
-                <button type="button" className="danger-link" disabled={vehicles.length === 1} onClick={() => onDelete(vehicle.id)}>삭제</button>
+                <button type="button" className="text-button" disabled={isSaving} onClick={() => startEditing(vehicle)}>수정</button>
+                <button type="button" className="danger-link" disabled={vehicles.length === 1 || isSaving} onClick={() => void handleDelete(vehicle.id)}>삭제</button>
               </div>
             </article>
           ))}
@@ -125,8 +154,8 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
           </div>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
           <div className="form-actions">
-            <button type="submit" className="primary-button">{editingVehicleId ? "변경 저장" : "차량 등록"}</button>
-            {editingVehicleId ? <button type="button" className="secondary-button" onClick={cancelEditing}>수정 취소</button> : null}
+            <button type="submit" className="primary-button" disabled={isSaving}>{isSaving ? "저장 중…" : editingVehicleId ? "변경 저장" : "차량 등록"}</button>
+            {editingVehicleId ? <button type="button" className="secondary-button" disabled={isSaving} onClick={cancelEditing}>수정 취소</button> : null}
           </div>
         </form>
       </section>

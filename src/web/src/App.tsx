@@ -18,7 +18,7 @@ const STATIC_PAGES: Record<Exclude<AppView, "dashboard" | "planner">, { title: s
 export default function App() {
   const [view, setView] = useState<AppView>("dashboard");
   const [vehicleManagerOpen, setVehicleManagerOpen] = useState(false);
-  const { vehicles, activeVehicle, setActiveVehicle, addVehicle, updateVehicle, deleteVehicle } = useVehicleProfiles();
+  const { vehicles, activeVehicle, syncStatus, setActiveVehicle, addVehicle, updateVehicle, deleteVehicle } = useVehicleProfiles();
   const plannerLabel = isEv(activeVehicle) ? "EV 충전 플래너" : "주유 경로 플래너";
   const navItems: Array<{ view: AppView; label: string; icon: ReactNode }> = [
     { view: "dashboard", label: "홈", icon: <HomeIcon /> },
@@ -32,12 +32,12 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <button type="button" className="brand" onClick={() => setView("dashboard")}><span className="brand-mark">A</span><span><strong>AUTO SQUAD</strong><small>자동차 AI 코파일럿</small></span></button>
-        <VehicleSelector vehicles={vehicles} activeVehicle={activeVehicle} onSelect={setActiveVehicle} onManage={() => setVehicleManagerOpen(true)} />
+        <VehicleSelector vehicles={vehicles} activeVehicle={activeVehicle} syncStatus={syncStatus} onSelect={setActiveVehicle} onManage={() => setVehicleManagerOpen(true)} />
       </header>
       <div className="app-body">
         <nav className="sidebar" aria-label="주요 기능">
           {navItems.map((item) => <button key={item.view} type="button" className={view === item.view ? "nav-item is-active" : "nav-item"} onClick={() => setView(item.view)}>{item.icon}<span>{item.label}</span></button>)}
-          <div className="sidebar-note"><span>현재 단계</span><strong>Frontend MVP</strong><small>Issue #4</small></div>
+          <div className="sidebar-note"><span>현재 단계</span><strong>차량 API 연동</strong><small>FastAPI + SQLite</small></div>
         </nav>
         <main className="main-content">
           {view === "dashboard" ? <Dashboard vehicle={activeVehicle} onNavigate={setView} /> : null}

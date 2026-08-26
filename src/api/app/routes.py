@@ -1,21 +1,45 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+import sqlite3
 
-from .database import database_is_ready, list_vehicle_rows
-from .errors import ServiceNotConfiguredError
+from fastapi import APIRouter, Request, Response, status
+
+from .database import (
+    LastVehicleDeletionError,
+    VehicleLimitReachedError,
+    VehicleNotFoundError,
+    activate_vehicle,
+    create_vehicle,
+    database_is_ready,
+    delete_vehicle,
+    list_vehicle_rows,
+    update_vehicle,
+)
+from .errors import ApiError, ServiceNotConfiguredError
 from .schemas import (
     ApiErrorResponse,
     HealthResponse,
     ManualSearchRequest,
     ManualSearchResponse,
     RecallListResponse,
+    VehicleCreate,
     VehicleListResponse,
     VehicleProfile,
+    VehicleUpdate,
 )
 
 
 router = APIRouter(prefix="/api/v1")
+
+
+def vehicle_from_row(row: sqlite3.Row) -> VehicleProfile:
+    record = dict(row)
+    record["is_active"] = bool(record["is_active"])
+    return VehicleProfile(**record)
+
+
+def vehicle_not_found() -> ApiError:
+    return ApiError(status.HTTP_404_NOT_FOUND, "vehicle_not_found", "차량을 찾을 수 없습니다.")
 
 
 @router.get("/health", response_model=HealthResponse, tags=["system"])
@@ -37,13 +61,90 @@ def health(request: Request) -> HealthResponse:
 @router.get("/vehicles", response_model=VehicleListResponse, tags=["vehicles"])
 def list_vehicles(request: Request) -> VehicleListResponse:
     rows = list_vehicle_rows(request.app.state.settings.database_path)
-    items = []
-    for row in rows:
-        record = dict(row)
-        record["is_active"] = bool(record["is_active"])
-        items.append(VehicleProfile(**record))
+    items = [vehicle_from_row(row) for row in rows]
     active_vehicle_id = next((item.id for item in items if item.is_active), None)
     return VehicleListResponse(items=items, active_vehicle_id=active_vehicle_id)
+
+
+@router.post(
+    "/vehicles",
+    response_model=VehicleProfile,
+    status_code=status.HTTP_201_CREATED,
+    responses={409: {"model": ApiErrorResponse}},
+    tags=["vehicles"],
+)
+def add_vehicle(request: Request, payload: VehicleCreate) -> VehicleProfile:
+    try:
+        row = create_vehicle(
+            request.app.state.settings.database_path, payload.model_dump()
+        )
+    except VehicleLimitReachedError:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "vehicle_limit_reached",
+            "차량은 최대 3대까지 등록할 수 있습니다.",
+        ) from None
+    except sqlite3.IntegrityError:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "vehicle_already_exists",
+            "같은 식별자의 차량이 이미 등록되어 있습니다.",
+        ) from None
+    return vehicle_from_row(row)
+
+
+@router.put(
+    "/vehicles/{vehicle_id}",
+    response_model=VehicleProfile,
+    responses={404: {"model": ApiErrorResponse}},
+    tags=["vehicles"],
+)
+def edit_vehicle(
+    request: Request, vehicle_id: str, payload: VehicleUpdate
+) -> VehicleProfile:
+    try:
+        row = update_vehicle(
+            request.app.state.settings.database_path,
+            vehicle_id,
+            payload.model_dump(),
+        )
+    except VehicleNotFoundError:
+        raise vehicle_not_found() from None
+    return vehicle_from_row(row)
+
+
+@router.put(
+    "/vehicles/{vehicle_id}/active",
+    response_model=VehicleProfile,
+    responses={404: {"model": ApiErrorResponse}},
+    tags=["vehicles"],
+)
+def set_active_vehicle(request: Request, vehicle_id: str) -> VehicleProfile:
+    try:
+        row = activate_vehicle(request.app.state.settings.database_path, vehicle_id)
+    except VehicleNotFoundError:
+        raise vehicle_not_found() from None
+    return vehicle_from_row(row)
+
+
+@router.delete(
+    "/vehicles/{vehicle_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={404: {"model": ApiErrorResponse}, 409: {"model": ApiErrorResponse}},
+    tags=["vehicles"],
+)
+def remove_vehicle(request: Request, vehicle_id: str) -> Response:
+    try:
+        delete_vehicle(request.app.state.settings.database_path, vehicle_id)
+    except VehicleNotFoundError:
+        raise vehicle_not_found() from None
+    except LastVehicleDeletionError:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "last_vehicle_required",
+            "마지막 차량은 삭제할 수 없습니다.",
+        ) from None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

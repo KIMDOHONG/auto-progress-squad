@@ -13,7 +13,21 @@ class ServiceNotConfiguredError(Exception):
         self.message = message
 
 
+class ApiError(Exception):
+    def __init__(self, status_code: int, code: str, message: str) -> None:
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+
+
 def install_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(ApiError)
+    async def api_error_handler(_request: Request, error: ApiError) -> JSONResponse:
+        payload = ApiErrorResponse(
+            error=ApiErrorDetail(code=error.code, message=error.message, retryable=False)
+        )
+        return JSONResponse(status_code=error.status_code, content=payload.model_dump())
+
     @app.exception_handler(ServiceNotConfiguredError)
     async def service_not_configured_handler(
         _request: Request, error: ServiceNotConfiguredError

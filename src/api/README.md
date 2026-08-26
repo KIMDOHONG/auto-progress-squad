@@ -31,6 +31,10 @@ uv run pytest
 | --- | --- |
 | `GET /api/v1/health` | 실제 상태 확인 |
 | `GET /api/v1/vehicles` | SQLite 차량 목록 조회 |
+| `POST /api/v1/vehicles` | 차량 등록, 최대 3대 |
+| `PUT /api/v1/vehicles/{vehicle_id}` | 차량 정보 수정 |
+| `PUT /api/v1/vehicles/{vehicle_id}/active` | 활성 차량 전환 |
+| `DELETE /api/v1/vehicles/{vehicle_id}` | 차량 삭제, 마지막 1대 보호 |
 | `POST /api/v1/manual/search` | 계약만 제공, 현재 `503` |
 | `GET /api/v1/vehicles/{vehicle_id}/recalls` | 계약만 제공, 현재 `503` |
 
