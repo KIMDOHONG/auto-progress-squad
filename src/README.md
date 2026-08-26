@@ -5,5 +5,6 @@
 ## 현재 구조
 
 - `web/`: React, TypeScript, Vite 기반 프런트엔드 MVP
+- `api/`: FastAPI, Pydantic, SQLite 기반 백엔드 API 기반
 
-백엔드와 AI/RAG 코드는 프리플라이트와 ADR 승인 후 별도 모듈로 추가합니다.
+AI/RAG 파이프라인과 외부 API 어댑터는 검증 가능한 데이터가 준비된 뒤 `api/`에 추가합니다.
