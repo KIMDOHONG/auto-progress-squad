@@ -41,5 +41,28 @@ jobs:
             exit 1
           fi
 
-      - name: Next CI step
-        run: echo "Add language-specific lint and unit tests after the stack is selected."
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.11.27"
+          enable-cache: true
+          cache-dependency-glob: "src/api/uv.lock"
+
+      - name: Install locked backend dependencies
+        working-directory: src/api
+        run: uv sync --locked --extra test
+
+      - name: Run backend tests
+        working-directory: src/api
+        run: uv run --locked pytest

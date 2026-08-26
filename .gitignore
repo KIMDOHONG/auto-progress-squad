@@ -8,6 +8,9 @@ venv/
 .ruff_cache/
 .coverage
 htmlcov/
+*.db
+*.db-shm
+*.db-wal
 
 # C/C++ and build
 build/

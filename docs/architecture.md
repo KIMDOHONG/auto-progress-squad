@@ -57,18 +57,18 @@ flowchart LR
 | 매물 페이지 | 공개 매물 정보 | 파일 업로드·직접 입력 |
 | 로컬 문서·모델 | RAG와 추론 | 미지원 안내 |
 
-## 6. 권장 기술 스택
+## 6. 기술 스택
 
 | 계층 | 기술 |
 | --- | --- |
 | Frontend | React, TypeScript, Vite |
-| Backend | Python, FastAPI |
+| Backend | Python 3.12, FastAPI |
 | Database | SQLite |
 | AI/RAG | OpenVINO GenAI, 임베딩, 벡터 검색 |
 | External API | 길찾기, 전기차 충전소, 리콜 |
 | Test/CI | Pytest, frontend test, GitHub Actions |
 
-최종 기술 확정은 간단한 API·OpenVINO 실행 실험 후 ADR로 기록합니다.
+FastAPI 백엔드 기반은 ADR-0002로 확정했습니다. OpenVINO, 임베딩과 벡터 검색 방식은 별도 실행 실험 후 추가 ADR로 결정합니다.
 
 ## 7. 데이터 모델
 
