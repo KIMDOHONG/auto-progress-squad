@@ -6,7 +6,10 @@ describe("vehicle-aware planner", () => {
 
   it("shows the EV planner for an electric active vehicle", () => {
     render(<App />);
-    expect(screen.getAllByRole("button", { name: /EV 충전 플래너/ })).toHaveLength(2);
+    const plannerButtons = screen.getAllByRole("button", { name: /EV 충전 플래너/ });
+    expect(plannerButtons).toHaveLength(2);
+    fireEvent.click(plannerButtons[0]);
+    expect(screen.getByLabelText("목적지")).toHaveValue("대한상공회의소 부산인력개발원");
   });
 
   it("switches to the fuel planner for a combustion vehicle", () => {

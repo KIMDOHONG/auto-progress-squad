@@ -13,7 +13,7 @@ const SAMPLE_STATIONS = [
 export function DrivePlanner({ vehicle }: DrivePlannerProps) {
   const electric = isEv(vehicle);
   const [departure, setDeparture] = useState("현재 위치");
-  const [destination, setDestination] = useState("강릉역");
+  const [destination, setDestination] = useState("대한상공회의소 부산인력개발원");
   const [battery, setBattery] = useState("42");
   const [efficiency, setEfficiency] = useState("5.1");
   const [remainingRange, setRemainingRange] = useState("120");
