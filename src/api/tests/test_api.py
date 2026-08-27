@@ -1,6 +1,9 @@
 import sqlite3
+from pathlib import Path
 
 from fastapi.testclient import TestClient
+
+from app.database import initialize_database
 
 
 def vehicle_payload(vehicle_id: str, model: str = "아이오닉 5") -> dict[str, object]:
@@ -193,3 +196,77 @@ def test_vehicle_mutations_report_not_found_and_invalid_energy_fields(
     response = client.post("/api/v1/vehicles", json=invalid)
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_hydrogen_vehicle_profile_is_supported(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/vehicles",
+        json={
+            "id": "nexo-2021",
+            "nickname": "가족 수소차",
+            "manufacturer": "현대",
+            "model": "넥쏘",
+            "model_year": 2021,
+            "powertrain": "hydrogen",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["powertrain"] == "hydrogen"
+    assert response.json()["fuel_grade"] is None
+    assert response.json()["battery_capacity_kwh"] is None
+
+    invalid = client.post(
+        "/api/v1/vehicles",
+        json={
+            "id": "invalid-hydrogen",
+            "nickname": "잘못된 수소차",
+            "manufacturer": "현대",
+            "model": "넥쏘",
+            "model_year": 2021,
+            "powertrain": "hydrogen",
+            "fuel_grade": "premium",
+        },
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "validation_error"
+
+
+def test_schema_v2_migration_preserves_profiles_and_adds_hydrogen(tmp_path: Path) -> None:
+    database_path = tmp_path / "legacy.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE vehicle_profiles (
+                id TEXT PRIMARY KEY,
+                nickname TEXT NOT NULL,
+                manufacturer TEXT NOT NULL,
+                model TEXT NOT NULL,
+                model_year INTEGER NOT NULL,
+                powertrain TEXT NOT NULL CHECK (
+                    powertrain IN ('electric', 'gasoline', 'diesel', 'hybrid')
+                ),
+                fuel_grade TEXT,
+                battery_capacity_kwh REAL,
+                is_active INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            INSERT INTO vehicle_profiles (
+                id, nickname, manufacturer, model, model_year, powertrain, is_active
+            ) VALUES ('legacy-ev', '기존 차량', '현대', '아이오닉 5', 2024, 'electric', 1);
+            """
+        )
+
+    initialize_database(database_path)
+
+    with sqlite3.connect(database_path) as connection:
+        assert connection.execute(
+            "SELECT model FROM vehicle_profiles WHERE id = 'legacy-ev'"
+        ).fetchone()[0] == "아이오닉 5"
+        connection.execute(
+            """
+            INSERT INTO vehicle_profiles (
+                id, nickname, manufacturer, model, model_year, powertrain, is_active
+            ) VALUES ('nexo', '수소차', '현대', '넥쏘', 2021, 'hydrogen', 0)
+            """
+        )

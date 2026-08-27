@@ -2,6 +2,7 @@ import type { FuelGrade, Powertrain, VehicleProfile } from "../types";
 
 export const POWERTRAIN_LABELS: Record<Powertrain, string> = {
   electric: "전기차",
+  hydrogen: "수소전기차",
   gasoline: "가솔린",
   diesel: "디젤",
   hybrid: "하이브리드",
@@ -17,20 +18,28 @@ export const FUEL_GRADE_LABELS: Record<FuelGrade, string> = {
 
 export const DEFAULT_VEHICLES: VehicleProfile[] = [
   {
-    id: "sample-ioniq5",
-    nickname: "출퇴근 EV",
+    id: "sample-nexo",
+    nickname: "가족 수소차",
     manufacturer: "현대",
-    model: "아이오닉 5",
-    modelYear: 2024,
+    model: "넥쏘",
+    modelYear: 2021,
+    powertrain: "hydrogen",
+  },
+  {
+    id: "sample-electrified-gv70",
+    nickname: "프리미엄 EV",
+    manufacturer: "제네시스",
+    model: "ELECTRIFIED GV70",
+    modelYear: 2027,
     powertrain: "electric",
     batteryCapacityKwh: 84,
   },
   {
-    id: "sample-bmw3",
+    id: "sample-bmwm3",
     nickname: "주말 차량",
     manufacturer: "BMW",
-    model: "330i",
-    modelYear: 2022,
+    model: "M3",
+    modelYear: 2021,
     powertrain: "gasoline",
     fuelGrade: "premium",
   },
@@ -44,7 +53,12 @@ export function isEv(vehicle: VehicleProfile): boolean {
   return vehicle.powertrain === "electric";
 }
 
+export function isHydrogen(vehicle: VehicleProfile): boolean {
+  return vehicle.powertrain === "hydrogen";
+}
+
 export function getEnergyLabel(vehicle: VehicleProfile): string {
   if (isEv(vehicle)) return "전기 충전";
+  if (isHydrogen(vehicle)) return "수소 충전";
   return vehicle.fuelGrade ? FUEL_GRADE_LABELS[vehicle.fuelGrade] : POWERTRAIN_LABELS[vehicle.powertrain];
 }

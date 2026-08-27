@@ -1,4 +1,4 @@
-export type Powertrain = "electric" | "gasoline" | "diesel" | "hybrid";
+export type Powertrain = "electric" | "hydrogen" | "gasoline" | "diesel" | "hybrid";
 
 export type FuelGrade = "regular" | "premium" | "super-premium" | "diesel" | "high-cetane";
 

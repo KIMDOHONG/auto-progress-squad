@@ -3,15 +3,15 @@ import { BookIcon, CarIcon, FuelIcon, HomeIcon, RouteIcon, WrenchIcon } from "./
 import { VehicleSelector } from "./components/VehicleSelector";
 import { ChatPanel } from "./features/chat/ChatPanel";
 import { Dashboard } from "./features/dashboard/Dashboard";
+import { ManualHub } from "./features/manual/ManualHub";
 import { DrivePlanner } from "./features/planner/DrivePlanner";
 import { VehicleManager } from "./features/vehicles/VehicleManager";
 import { useVehicleProfiles } from "./hooks/useVehicleProfiles";
-import { isEv } from "./lib/vehicle";
+import { isEv, isHydrogen } from "./lib/vehicle";
 import type { AppView } from "./types";
 
-const STATIC_PAGES: Record<Exclude<AppView, "dashboard" | "planner">, { title: string; copy: string }> = {
+const STATIC_PAGES: Record<Exclude<AppView, "dashboard" | "planner" | "manual">, { title: string; copy: string }> = {
   maintenance: { title: "경고등·증상 안전 대응", copy: "정비 규칙과 매뉴얼 근거를 연결하는 화면은 다음 기능 단계에서 구현합니다." },
-  manual: { title: "매뉴얼 RAG·리콜", copy: "차량별 매뉴얼 수집과 공식 리콜 API 연결 후 검색 결과를 제공합니다." },
   "used-car": { title: "중고차 위험 분석", copy: "성능점검표 업로드와 보험이력 입력 흐름을 다음 기능 단계에서 구현합니다." },
 };
 
@@ -19,7 +19,7 @@ export default function App() {
   const [view, setView] = useState<AppView>("dashboard");
   const [vehicleManagerOpen, setVehicleManagerOpen] = useState(false);
   const { vehicles, activeVehicle, syncStatus, setActiveVehicle, addVehicle, updateVehicle, deleteVehicle } = useVehicleProfiles();
-  const plannerLabel = isEv(activeVehicle) ? "EV 충전 플래너" : "주유 경로 플래너";
+  const plannerLabel = isEv(activeVehicle) ? "EV 충전 플래너" : isHydrogen(activeVehicle) ? "수소 충전 플래너" : "주유 경로 플래너";
   const navItems: Array<{ view: AppView; label: string; icon: ReactNode }> = [
     { view: "dashboard", label: "홈", icon: <HomeIcon /> },
     { view: "maintenance", label: "유지보수", icon: <WrenchIcon /> },
@@ -42,7 +42,8 @@ export default function App() {
         <main className="main-content">
           {view === "dashboard" ? <Dashboard vehicle={activeVehicle} onNavigate={setView} /> : null}
           {view === "planner" ? <DrivePlanner vehicle={activeVehicle} /> : null}
-          {view !== "dashboard" && view !== "planner" ? <section className="page-section placeholder-page"><p className="section-caption">다음 구현 단계</p><h1>{STATIC_PAGES[view].title}</h1><p>{STATIC_PAGES[view].copy}</p><div className="placeholder-rail"><span /><span /><span /></div></section> : null}
+          {view === "manual" ? <ManualHub vehicle={activeVehicle} /> : null}
+          {view === "maintenance" || view === "used-car" ? <section className="page-section placeholder-page"><p className="section-caption">다음 구현 단계</p><h1>{STATIC_PAGES[view].title}</h1><p>{STATIC_PAGES[view].copy}</p><div className="placeholder-rail"><span /><span /><span /></div></section> : null}
         </main>
         <ChatPanel vehicle={activeVehicle} view={view} />
       </div>

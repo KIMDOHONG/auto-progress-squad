@@ -9,10 +9,12 @@ import {
 } from "../lib/vehicleApi";
 import type { VehicleProfile } from "../types";
 
-const STORAGE_KEY = "auto-squad.vehicle-profiles.v1";
+const STORAGE_KEY = "auto-squad.vehicle-profiles.v3";
+const LEGACY_V2_STORAGE_KEY = "auto-squad.vehicle-profiles.v2";
+const LEGACY_V1_STORAGE_KEY = "auto-squad.vehicle-profiles.v1";
 
 interface StoredProfiles {
-  version: 1;
+  version: 3;
   vehicles: VehicleProfile[];
   activeVehicleId: string;
 }
@@ -52,7 +54,7 @@ function connectProfiles(apiBaseUrl: string, localState: StoredProfiles): Promis
       throw new Error("동기화할 차량 정보가 없습니다.");
     }
     return {
-      version: 1 as const,
+      version: 3 as const,
       vehicles: remote.vehicles,
       activeVehicleId: remote.activeVehicleId ?? remote.vehicles[0].id,
     };
@@ -68,18 +70,127 @@ function connectProfiles(apiBaseUrl: string, localState: StoredProfiles): Promis
   return connection;
 }
 
+interface LegacyV1StoredProfiles {
+  version: 1;
+  vehicles: VehicleProfile[];
+  activeVehicleId: string;
+}
+
+interface LegacyV2StoredProfiles {
+  version: 2;
+  vehicles: VehicleProfile[];
+  activeVehicleId: string;
+}
+
+const LEGACY_DEFAULTS = JSON.stringify([
+  {
+    id: "sample-ioniq5",
+    nickname: "출퇴근 EV",
+    manufacturer: "현대",
+    model: "아이오닉 5",
+    modelYear: 2024,
+    powertrain: "electric",
+    batteryCapacityKwh: 84,
+  },
+  {
+    id: "sample-bmw3",
+    nickname: "주말 차량",
+    manufacturer: "BMW",
+    model: "330i",
+    modelYear: 2022,
+    powertrain: "gasoline",
+    fuelGrade: "premium",
+  },
+]);
+
+const V2_DEFAULTS = JSON.stringify([
+  {
+    id: "sample-nexo",
+    nickname: "가족 수소차",
+    manufacturer: "현대",
+    model: "넥쏘",
+    modelYear: 2021,
+    powertrain: "hydrogen",
+  },
+  {
+    id: "sample-ioniq5n",
+    nickname: "고성능 EV",
+    manufacturer: "현대",
+    model: "아이오닉 5 N",
+    modelYear: 2024,
+    powertrain: "electric",
+    batteryCapacityKwh: 84,
+  },
+  {
+    id: "sample-bmwm3",
+    nickname: "주말 차량",
+    manufacturer: "BMW",
+    model: "M3",
+    modelYear: 2021,
+    powertrain: "gasoline",
+    fuelGrade: "premium",
+  },
+]);
+
+function fallbackProfiles(): StoredProfiles {
+  return { version: 3, vehicles: DEFAULT_VEHICLES, activeVehicleId: DEFAULT_VEHICLES[0].id };
+}
+
+function isValidProfiles(value: StoredProfiles | LegacyV1StoredProfiles | LegacyV2StoredProfiles): boolean {
+  return Array.isArray(value.vehicles)
+    && value.vehicles.length > 0
+    && value.vehicles.some((vehicle) => vehicle.id === value.activeVehicleId);
+}
+
+function migrateV2Profiles(): StoredProfiles | null {
+  try {
+    const raw = window.localStorage.getItem(LEGACY_V2_STORAGE_KEY);
+    if (!raw) return null;
+    const legacy = JSON.parse(raw) as LegacyV2StoredProfiles;
+    if (legacy.version !== 2 || !isValidProfiles(legacy)) return null;
+    const unchangedDefaults = JSON.stringify(legacy.vehicles) === V2_DEFAULTS;
+    const activeVehicleId = unchangedDefaults && legacy.activeVehicleId === "sample-ioniq5n"
+      ? "sample-electrified-gv70"
+      : legacy.activeVehicleId;
+    const migrated: StoredProfiles = unchangedDefaults
+      ? { version: 3, vehicles: DEFAULT_VEHICLES, activeVehicleId }
+      : { version: 3, vehicles: legacy.vehicles, activeVehicleId };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+    window.localStorage.removeItem(LEGACY_V2_STORAGE_KEY);
+    return migrated;
+  } catch {
+    return null;
+  }
+}
+
+function migrateV1Profiles(): StoredProfiles | null {
+  try {
+    const raw = window.localStorage.getItem(LEGACY_V1_STORAGE_KEY);
+    if (!raw) return null;
+    const legacy = JSON.parse(raw) as LegacyV1StoredProfiles;
+    if (legacy.version !== 1 || !isValidProfiles(legacy)) return null;
+    const migrated = JSON.stringify(legacy.vehicles) === LEGACY_DEFAULTS
+      ? fallbackProfiles()
+      : { version: 3 as const, vehicles: legacy.vehicles, activeVehicleId: legacy.activeVehicleId };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+    window.localStorage.removeItem(LEGACY_V1_STORAGE_KEY);
+    return migrated;
+  } catch {
+    return null;
+  }
+}
+
 function readStoredProfiles(): StoredProfiles {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) throw new Error("no stored profiles");
-    const parsed = JSON.parse(raw) as StoredProfiles;
-    if (parsed.version !== 1 || !Array.isArray(parsed.vehicles) || parsed.vehicles.length === 0) {
-      throw new Error("invalid stored profiles");
+    if (raw) {
+      const parsed = JSON.parse(raw) as StoredProfiles;
+      if (parsed.version === 3 && isValidProfiles(parsed)) return parsed;
     }
-    return parsed;
   } catch {
-    return { version: 1, vehicles: DEFAULT_VEHICLES, activeVehicleId: DEFAULT_VEHICLES[0].id };
+    // Fall through to the versioned migration and defaults.
   }
+  return migrateV2Profiles() ?? migrateV1Profiles() ?? fallbackProfiles();
 }
 
 function persist(value: StoredProfiles): void {

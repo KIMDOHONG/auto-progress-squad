@@ -15,9 +15,21 @@ describe("vehicle-aware planner", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows the EV planner for an electric active vehicle", () => {
+  it("shows the hydrogen planner for the default NEXO profile", () => {
     render(<App />);
-    const plannerButtons = screen.getAllByRole("button", { name: /EV 충전 플래너/ });
+    expect(screen.getByRole("option", { name: "현대 넥쏘 · 2021" })).toBeInTheDocument();
+    const plannerButtons = screen.getAllByRole("button", { name: /수소 충전 플래너/ });
+    expect(plannerButtons).toHaveLength(2);
+    fireEvent.click(plannerButtons[0]);
+    expect(screen.getByRole("heading", { name: "수소 충전·주행 플래너" })).toBeInTheDocument();
+    expect(screen.getByDisplayValue("수소")).toBeInTheDocument();
+    expect(screen.getByText("경로 수소충전소 A")).toBeInTheDocument();
+  });
+
+  it("switches to the EV planner for the ELECTRIFIED GV70 profile", async () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("활성 차량"), { target: { value: "sample-electrified-gv70" } });
+    const plannerButtons = await screen.findAllByRole("button", { name: /EV 충전 플래너/ });
     expect(plannerButtons).toHaveLength(2);
     fireEvent.click(plannerButtons[0]);
     expect(screen.getByLabelText("목적지")).toHaveValue("대한상공회의소 부산인력개발원");
@@ -25,21 +37,97 @@ describe("vehicle-aware planner", () => {
 
   it("switches to the fuel planner for a combustion vehicle", async () => {
     render(<App />);
-    fireEvent.change(screen.getByLabelText("활성 차량"), { target: { value: "sample-bmw3" } });
+    fireEvent.change(screen.getByLabelText("활성 차량"), { target: { value: "sample-bmwm3" } });
     const plannerButtons = await screen.findAllByRole("button", { name: /주유 경로 플래너/ });
     expect(plannerButtons).toHaveLength(2);
     fireEvent.click(plannerButtons[0]);
-    expect(await screen.findByText("BMW 330i · 2022 · 고급 휘발유 우선 검색")).toBeInTheDocument();
+    expect(await screen.findByText("BMW M3 · 2021 · 고급 휘발유 우선 검색")).toBeInTheDocument();
   });
 
   it("edits an existing vehicle profile", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "차량 프로필 관리" }));
     const dialog = within(screen.getByRole("dialog", { name: "내 차량 관리" }));
-    fireEvent.click(dialog.getAllByRole("button", { name: "수정" })[1]);
-    fireEvent.change(dialog.getByRole("textbox", { name: "모델 *" }), { target: { value: "330i M Sport" } });
+    fireEvent.click(dialog.getAllByRole("button", { name: "수정" })[2]);
+    fireEvent.change(dialog.getByRole("textbox", { name: "모델 *" }), { target: { value: "M3 Competition" } });
     fireEvent.click(dialog.getByRole("button", { name: "변경 저장" }));
-    expect(await screen.findByRole("option", { name: "BMW 330i M Sport · 2022" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "BMW M3 Competition · 2021" })).toBeInTheDocument();
+  });
+
+  it("migrates the unchanged v1 demo presets to the new three-vehicle set", () => {
+    window.localStorage.setItem("auto-squad.vehicle-profiles.v1", JSON.stringify({
+      version: 1,
+      vehicles: [
+        { id: "sample-ioniq5", nickname: "출퇴근 EV", manufacturer: "현대", model: "아이오닉 5", modelYear: 2024, powertrain: "electric", batteryCapacityKwh: 84 },
+        { id: "sample-bmw3", nickname: "주말 차량", manufacturer: "BMW", model: "330i", modelYear: 2022, powertrain: "gasoline", fuelGrade: "premium" },
+      ],
+      activeVehicleId: "sample-ioniq5",
+    }));
+
+    render(<App />);
+
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+    expect(screen.getByRole("option", { name: "현대 넥쏘 · 2021" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "제네시스 ELECTRIFIED GV70 · 2027" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "BMW M3 · 2021" })).toBeInTheDocument();
+    expect(window.localStorage.getItem("auto-squad.vehicle-profiles.v1")).toBeNull();
+  });
+
+  it("replaces the unchanged v2 IONIQ 5 N demo preset", () => {
+    window.localStorage.setItem("auto-squad.vehicle-profiles.v2", JSON.stringify({
+      version: 2,
+      vehicles: [
+        { id: "sample-nexo", nickname: "가족 수소차", manufacturer: "현대", model: "넥쏘", modelYear: 2021, powertrain: "hydrogen" },
+        { id: "sample-ioniq5n", nickname: "고성능 EV", manufacturer: "현대", model: "아이오닉 5 N", modelYear: 2024, powertrain: "electric", batteryCapacityKwh: 84 },
+        { id: "sample-bmwm3", nickname: "주말 차량", manufacturer: "BMW", model: "M3", modelYear: 2021, powertrain: "gasoline", fuelGrade: "premium" },
+      ],
+      activeVehicleId: "sample-ioniq5n",
+    }));
+
+    render(<App />);
+
+    expect(screen.getByRole("option", { name: "제네시스 ELECTRIFIED GV70 · 2027" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "현대 아이오닉 5 N · 2024" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("활성 차량")).toHaveValue("sample-electrified-gv70");
+    expect(window.localStorage.getItem("auto-squad.vehicle-profiles.v2")).toBeNull();
+  });
+
+  it("preserves customized v2 profiles during the storage migration", () => {
+    window.localStorage.setItem("auto-squad.vehicle-profiles.v2", JSON.stringify({
+      version: 2,
+      vehicles: [
+        { id: "custom-car", nickname: "내 차", manufacturer: "기아", model: "K5", modelYear: 2025, powertrain: "gasoline", fuelGrade: "regular" },
+      ],
+      activeVehicleId: "custom-car",
+    }));
+
+    render(<App />);
+
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(screen.getByRole("option", { name: "기아 K5 · 2025" })).toBeInTheDocument();
+    expect(window.localStorage.getItem("auto-squad.vehicle-profiles.v2")).toBeNull();
+  });
+
+  it("opens the exact Genesis manual for the active model and year", async () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("활성 차량"), { target: { value: "sample-electrified-gv70" } });
+    fireEvent.click(screen.getByRole("button", { name: "매뉴얼·리콜" }));
+
+    const manualLink = await screen.findByRole("link", { name: /공식 취급설명서 열기/ });
+    expect(manualLink).toHaveAttribute(
+      "href",
+      "https://ownersmanual.genesis.com/manual/ELECTRIFIED%20GV70?projCode=JKEV&year=2027&langCode=ko_KR&countryCode=A99",
+    );
+    expect(screen.getByText(/JKEV · 2027/)).toBeInTheDocument();
+  });
+
+  it("does not guess a BMW manual before a VIN is available", async () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("활성 차량"), { target: { value: "sample-bmwm3" } });
+    fireEvent.click(screen.getByRole("button", { name: "매뉴얼·리콜" }));
+
+    expect(await screen.findByText("VIN 확인 필요")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /공식 취급설명서 열기/ })).not.toBeInTheDocument();
   });
 
   it("loads vehicle profiles from the configured FastAPI backend", async () => {
