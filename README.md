@@ -36,6 +36,8 @@
 
 ### 차량 설명
 
+- 현대·기아·제네시스 공식 취급설명서 차량 찾기
+- 등록된 차종·연식·프로젝트 코드가 일치할 때 공식 디지털 설명서 직접 연결
 - 차량 사용설명서 RAG 검색
 - 차종별 리콜·안전정보 조회
 - 대시보드 리콜 알림과 원문 출처 제공
@@ -58,7 +60,7 @@ pnpm install
 pnpm dev
 ```
 
-현재 MVP는 `2021 현대 넥쏘`, `2024 현대 아이오닉 5 N`, `2021 BMW M3` 프리셋과 차량 최대 3대, 활성 차량 전환, 동력원별 플래너 전환, 고정 챗봇 문맥을 브라우저 로컬 저장소로 구현합니다. 외부 지도·전기·수소 충전소·주유소 API와 AI 모델은 아직 연결하지 않았으며 화면에서 샘플 상태로 명시합니다.
+현재 MVP는 `2021 현대 넥쏘`, `2027 제네시스 ELECTRIFIED GV70`, `2021 BMW M3` 프리셋과 차량 최대 3대, 활성 차량 전환, 동력원별 플래너 전환, 공식 취급설명서 연결, 고정 챗봇 문맥을 브라우저 로컬 저장소로 구현합니다. 넥쏘는 `FE · 2021`, ELECTRIFIED GV70은 `JKEV · 2027` 공식 문서로 연결하며, BMW는 VIN 확보 전까지 문서를 추측해 연결하지 않습니다. 외부 지도·전기·수소 충전소·주유소 API와 AI 모델은 아직 연결하지 않았으며 화면에서 샘플 상태로 명시합니다.
 
 로컬 FastAPI와 차량 정보를 동기화하려면 `src/web/.env.example`을 `.env.local`로 복사한 뒤 프런트엔드를 실행합니다. 환경 변수가 없는 GitHub Pages 공개 데모는 브라우저 저장 모드로 유지되며 상단 상태 배지에서 저장 위치를 확인할 수 있습니다.
 
@@ -74,7 +76,7 @@ uv run fastapi dev
 - 상태 확인: `http://127.0.0.1:8000/api/v1/health`
 - 테스트: `uv run pytest`
 
-현재 백엔드는 차량 프로필 CRUD·활성 차량 전환용 SQLite API와 매뉴얼·리콜 API 계약을 제공합니다. 매뉴얼 RAG와 리콜 원천 데이터는 아직 연결하지 않았으며 해당 요청은 `503` 미연동 오류로 명확하게 반환합니다.
+현재 백엔드는 차량 프로필 CRUD·활성 차량 전환용 SQLite API와 매뉴얼·리콜 API 계약을 제공합니다. 프런트엔드의 공식 취급설명서 링크는 제조사 원문을 새 탭으로 열며, 매뉴얼 RAG와 리콜 원천 데이터는 아직 연결하지 않았습니다. 백엔드 매뉴얼 검색 요청은 `503` 미연동 오류로 명확하게 반환합니다.
 
 ## 이번 범위에서 제외
 
@@ -114,6 +116,9 @@ uv run fastapi dev
 
 - [이전 기수 저장소 모음](https://github.com/pskcci?tab=repositories)
 - [DX-03 프로젝트 문서 템플릿](https://github.com/pskcci/DX-03/tree/main/doc/project)
+- [현대자동차 공식 취급설명서](https://ownersmanual.hyundai.com/main?langCode=ko_KR&countryCode=A99)
+- [기아 공식 취급설명서](https://ownersmanual.kia.com/main?langCode=ko_KR&countryCode=A99)
+- [제네시스 공식 취급설명서](https://ownersmanual.genesis.com/main?langCode=ko_KR&countryCode=A99)
 
 ## 팀원
 
