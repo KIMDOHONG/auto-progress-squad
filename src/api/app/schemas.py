@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 
-Powertrain = Literal["electric", "gasoline", "diesel", "hybrid"]
+Powertrain = Literal["electric", "hydrogen", "gasoline", "diesel", "hybrid"]
 FuelGrade = Literal["regular", "premium", "super-premium", "diesel", "high-cetane"]
 
 
@@ -52,8 +52,10 @@ class VehiclePayload(BaseModel):
     def validate_energy_fields(self) -> "VehiclePayload":
         if self.powertrain == "electric" and self.fuel_grade is not None:
             raise ValueError("전기차에는 지정 연료를 설정할 수 없습니다.")
+        if self.powertrain == "hydrogen" and self.fuel_grade is not None:
+            raise ValueError("수소전기차에는 휘발유·경유 등급을 설정할 수 없습니다.")
         if self.powertrain != "electric" and self.battery_capacity_kwh is not None:
-            raise ValueError("내연기관·하이브리드 차량에는 배터리 용량을 설정할 수 없습니다.")
+            raise ValueError("수소전기차·내연기관·하이브리드 차량에는 배터리 용량을 설정할 수 없습니다.")
         return self
 
 

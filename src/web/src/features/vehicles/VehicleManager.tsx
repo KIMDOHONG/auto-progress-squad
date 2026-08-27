@@ -28,6 +28,7 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const isElectric = draft.powertrain === "electric";
+  const isHydrogen = draft.powertrain === "hydrogen";
 
   function updateDraft<Key extends keyof VehicleDraft>(key: Key, value: VehicleDraft[Key]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -50,7 +51,7 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
       powertrain: draft.powertrain,
       ...(isElectric
         ? { batteryCapacityKwh: draft.batteryCapacityKwh ? Number(draft.batteryCapacityKwh) : undefined }
-        : { fuelGrade: draft.fuelGrade }),
+        : isHydrogen ? {} : { fuelGrade: draft.fuelGrade }),
     };
 
     setIsSaving(true);
@@ -148,6 +149,8 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
             <label>동력원<select value={draft.powertrain} onChange={(event) => updateDraft("powertrain", event.target.value as VehicleDraft["powertrain"])}>{Object.entries(POWERTRAIN_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             {isElectric ? (
               <label>배터리 용량<input type="number" min="1" value={draft.batteryCapacityKwh} onChange={(event) => updateDraft("batteryCapacityKwh", event.target.value)} placeholder="kWh" /></label>
+            ) : isHydrogen ? (
+              <label>충전 연료<input value="수소" readOnly /></label>
             ) : (
               <label>지정 연료<select value={draft.fuelGrade} onChange={(event) => updateDraft("fuelGrade", event.target.value as VehicleDraft["fuelGrade"])}>{Object.entries(FUEL_GRADE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             )}

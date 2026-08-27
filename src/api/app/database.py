@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class VehicleLimitReachedError(Exception):
@@ -48,7 +48,7 @@ def initialize_database(database_path: Path) -> None:
                 model TEXT NOT NULL,
                 model_year INTEGER NOT NULL,
                 powertrain TEXT NOT NULL CHECK (
-                    powertrain IN ('electric', 'gasoline', 'diesel', 'hybrid')
+                    powertrain IN ('electric', 'hydrogen', 'gasoline', 'diesel', 'hybrid')
                 ),
                 fuel_grade TEXT CHECK (
                     fuel_grade IS NULL OR fuel_grade IN (
@@ -65,6 +65,48 @@ def initialize_database(database_path: Path) -> None:
             WHERE is_active = 1;
             """
         )
+        table_sql = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'vehicle_profiles'"
+        ).fetchone()["sql"]
+        if "'hydrogen'" not in table_sql:
+            connection.executescript(
+                """
+                DROP INDEX IF EXISTS idx_vehicle_profiles_one_active;
+                ALTER TABLE vehicle_profiles RENAME TO vehicle_profiles_v2;
+
+                CREATE TABLE vehicle_profiles (
+                    id TEXT PRIMARY KEY,
+                    nickname TEXT NOT NULL,
+                    manufacturer TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    model_year INTEGER NOT NULL,
+                    powertrain TEXT NOT NULL CHECK (
+                        powertrain IN ('electric', 'hydrogen', 'gasoline', 'diesel', 'hybrid')
+                    ),
+                    fuel_grade TEXT CHECK (
+                        fuel_grade IS NULL OR fuel_grade IN (
+                            'regular', 'premium', 'super-premium', 'diesel', 'high-cetane'
+                        )
+                    ),
+                    battery_capacity_kwh REAL,
+                    is_active INTEGER NOT NULL DEFAULT 0 CHECK (is_active IN (0, 1)),
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
+                INSERT INTO vehicle_profiles (
+                    id, nickname, manufacturer, model, model_year, powertrain,
+                    fuel_grade, battery_capacity_kwh, is_active, created_at
+                )
+                SELECT id, nickname, manufacturer, model, model_year, powertrain,
+                       fuel_grade, battery_capacity_kwh, is_active, created_at
+                FROM vehicle_profiles_v2;
+
+                DROP TABLE vehicle_profiles_v2;
+                CREATE UNIQUE INDEX idx_vehicle_profiles_one_active
+                ON vehicle_profiles(is_active)
+                WHERE is_active = 1;
+                """
+            )
         connection.execute(
             "INSERT OR IGNORE INTO schema_meta(version) VALUES (?)", (SCHEMA_VERSION,)
         )

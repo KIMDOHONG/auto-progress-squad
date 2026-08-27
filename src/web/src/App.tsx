@@ -6,7 +6,7 @@ import { Dashboard } from "./features/dashboard/Dashboard";
 import { DrivePlanner } from "./features/planner/DrivePlanner";
 import { VehicleManager } from "./features/vehicles/VehicleManager";
 import { useVehicleProfiles } from "./hooks/useVehicleProfiles";
-import { isEv } from "./lib/vehicle";
+import { isEv, isHydrogen } from "./lib/vehicle";
 import type { AppView } from "./types";
 
 const STATIC_PAGES: Record<Exclude<AppView, "dashboard" | "planner">, { title: string; copy: string }> = {
@@ -19,7 +19,7 @@ export default function App() {
   const [view, setView] = useState<AppView>("dashboard");
   const [vehicleManagerOpen, setVehicleManagerOpen] = useState(false);
   const { vehicles, activeVehicle, syncStatus, setActiveVehicle, addVehicle, updateVehicle, deleteVehicle } = useVehicleProfiles();
-  const plannerLabel = isEv(activeVehicle) ? "EV 충전 플래너" : "주유 경로 플래너";
+  const plannerLabel = isEv(activeVehicle) ? "EV 충전 플래너" : isHydrogen(activeVehicle) ? "수소 충전 플래너" : "주유 경로 플래너";
   const navItems: Array<{ view: AppView; label: string; icon: ReactNode }> = [
     { view: "dashboard", label: "홈", icon: <HomeIcon /> },
     { view: "maintenance", label: "유지보수", icon: <WrenchIcon /> },

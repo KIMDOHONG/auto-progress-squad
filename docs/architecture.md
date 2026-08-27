@@ -42,7 +42,7 @@ flowchart LR
 | Maintenance | 경고등·증상 안전 안내 | 증상·규칙·매뉴얼 | 위험도와 다음 행동 |
 | Manual RAG | 매뉴얼 검색과 근거 답변 | 차량·질문 | 답변·문서 위치 |
 | Recall Adapter | 공식 리콜 API 정규화 | 차종·연식 | 리콜 목록·조회시각 |
-| Drive Energy Planner | 활성 차량의 동력원에 따라 충전소 또는 지정연료 주유소 비교 | EV: SoC·전비, 내연기관: 주행가능거리·지정연료, 공통: 경로 | 충전 또는 주유 후보·우회시간·근거 |
+| Drive Energy Planner | 활성 차량의 동력원에 따라 전기·수소 충전소 또는 지정연료 주유소 비교 | EV: SoC·전비, 수소차: 주행가능거리, 내연기관: 주행가능거리·지정연료, 공통: 경로 | 충전 또는 주유 후보·우회시간·근거 |
 | Used-car Risk | 점검표·보험자료 분석 | 링크·파일·수치 | 위험 등급·근거·신뢰도 |
 | Safety & Evidence | 출력 검증과 출처 표시 | 모든 모듈 결과 | 사실/계산/추정 구분 |
 
@@ -52,6 +52,7 @@ flowchart LR
 | --- | --- | --- |
 | 길찾기 API | 거리·경로·예상 주행시간 | 거리 직접 입력 |
 | 충전소 OpenAPI | 전기차 충전기 위치·출력·상태 | 캐시와 상태시각 경고 |
+| 수소충전소 데이터 | 수소충전소 위치·운영시간·충전 가능 상태 | 상태 미확인 표시·직접 검색 링크 |
 | 주유소 데이터 | 일반·고급·초고급 휘발유와 일반·하이세탄 경유 취급점 탐색 | 취급 여부 미확인 표시·직접 검색 링크 |
 | 리콜 OpenAPI | 차종별 안전정보 | 재시도·원문 링크 |
 | 매물 페이지 | 공개 매물 정보 | 파일 업로드·직접 입력 |
@@ -65,7 +66,7 @@ flowchart LR
 | Backend | Python 3.12, FastAPI |
 | Database | SQLite |
 | AI/RAG | OpenVINO GenAI, 임베딩, 벡터 검색 |
-| External API | 길찾기, 전기차 충전소, 리콜 |
+| External API | 길찾기, 전기차·수소 충전소, 리콜 |
 | Test/CI | Pytest, frontend test, GitHub Actions |
 
 FastAPI 백엔드 기반은 ADR-0002로 확정했습니다. OpenVINO, 임베딩과 벡터 검색 방식은 별도 실행 실험 후 추가 ADR로 결정합니다.
@@ -79,7 +80,7 @@ User
      ├─ VehicleSpecification
      ├─ ManualDocument
      ├─ RecallCache
-     ├─ DriveEnergyPlan (EV 또는 내연기관)
+     ├─ DriveEnergyPlan (EV, 수소전기차 또는 내연기관)
      └─ Conversation
 
 UsedCarAnalysis

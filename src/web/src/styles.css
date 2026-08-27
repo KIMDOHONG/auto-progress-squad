@@ -70,6 +70,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .tone-blue .feature-icon { background: #dbe9ff; color: #2463eb; }
 .tone-green .feature-icon { background: #d4f7e8; color: #07966d; }
 .tone-purple .feature-icon { background: #e9e4ff; color: #7357e8; }
+.tone-hydrogen .feature-icon { background: #dff7f5; color: #087f78; }
 .tone-orange .feature-icon { background: #ffead5; color: #c45a08; }
 .tone-amber .feature-icon { background: #fff0bf; color: #b56a00; }
 .feature-copy { display: grid; gap: 9px; }
@@ -103,6 +104,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .planner-symbol { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 18px; }
 .planner-symbol svg { width: 30px; }
 .planner-symbol.ev { background: #ece8ff; color: var(--purple); }
+.planner-symbol.hydrogen { background: #dff7f5; color: #087f78; }
 .planner-symbol.fuel { background: #ffead5; color: #c45a08; }
 .planner-form { border-bottom: 1px solid var(--line); padding-bottom: 24px; }
 .form-grid { display: grid; gap: 14px; }
