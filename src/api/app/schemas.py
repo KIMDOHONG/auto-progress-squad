@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 Powertrain = Literal["electric", "hydrogen", "gasoline", "diesel", "hybrid"]
 FuelGrade = Literal["regular", "premium", "super-premium", "diesel", "high-cetane"]
+ManualSiteId = Literal["hmc", "kia", "genesis"]
 
 
 class ApiErrorDetail(BaseModel):
@@ -36,6 +37,12 @@ class VehicleProfile(BaseModel):
     powertrain: Powertrain
     fuel_grade: FuelGrade | None = None
     battery_capacity_kwh: float | None = None
+    manual_site_id: ManualSiteId | None = None
+    manual_model_name: str | None = None
+    manual_project_code: str | None = None
+    manual_model_year: int | None = None
+    manual_image_url: str | None = None
+    manual_verified_at: str | None = None
     is_active: bool
 
 
@@ -47,6 +54,12 @@ class VehiclePayload(BaseModel):
     powertrain: Powertrain
     fuel_grade: FuelGrade | None = None
     battery_capacity_kwh: float | None = Field(default=None, gt=0, le=500)
+    manual_site_id: ManualSiteId | None = None
+    manual_model_name: str | None = Field(default=None, max_length=120)
+    manual_project_code: str | None = Field(default=None, max_length=40)
+    manual_model_year: int | None = Field(default=None, ge=1990, le=2100)
+    manual_image_url: str | None = Field(default=None, max_length=1000)
+    manual_verified_at: str | None = Field(default=None, max_length=80)
 
     @model_validator(mode="after")
     def validate_energy_fields(self) -> "VehiclePayload":
@@ -56,6 +69,30 @@ class VehiclePayload(BaseModel):
             raise ValueError("수소전기차에는 휘발유·경유 등급을 설정할 수 없습니다.")
         if self.powertrain != "electric" and self.battery_capacity_kwh is not None:
             raise ValueError("수소전기차·내연기관·하이브리드 차량에는 배터리 용량을 설정할 수 없습니다.")
+        manual_values = (
+            self.manual_site_id,
+            self.manual_model_name,
+            self.manual_project_code,
+            self.manual_model_year,
+            self.manual_image_url,
+            self.manual_verified_at,
+        )
+        if any(value is not None for value in manual_values) and not all(
+            value is not None for value in manual_values
+        ):
+            raise ValueError("공식 취급설명서 검증 정보는 일부만 저장할 수 없습니다.")
+        if self.manual_site_id is not None:
+            allowed_image_prefixes = {
+                "hmc": "https://ownersmanual.hyundai.com/",
+                "kia": "https://ownersmanual.kia.com/",
+                "genesis": "https://ownersmanual.genesis.com/",
+            }
+            if not self.manual_image_url.startswith(
+                allowed_image_prefixes[self.manual_site_id]
+            ):
+                raise ValueError("공식 제조사 도메인의 차량 이미지만 저장할 수 있습니다.")
+            if self.manual_model_year != self.model_year:
+                raise ValueError("차량 연식과 공식 취급설명서 연식이 일치해야 합니다.")
         return self
 
 

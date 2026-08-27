@@ -25,6 +25,8 @@
 ### 사용자 개인화
 
 - 차량 최대 3대 등록·수정·삭제
+- AI 코파일럿에서 현대·기아·제네시스 차량을 차명·연식으로 찾고, 세대가 겹치면 공식 차량 이미지로 선택
+- 프로필이 3대인 경우 기존 차량을 선택해 교체하고, 삭제 요청은 최종 확인 후 반영
 - 현재 사용할 차량 선택
 - 선택 차량을 대시보드와 챗봇의 공통 문맥으로 사용
 
@@ -60,7 +62,11 @@ pnpm install
 pnpm dev
 ```
 
-현재 MVP는 `2021 현대 넥쏘`, `2027 제네시스 ELECTRIFIED GV70`, `2021 BMW M3` 프리셋과 차량 최대 3대, 활성 차량 전환, 동력원별 플래너 전환, 공식 취급설명서 연결, 고정 챗봇 문맥을 브라우저 로컬 저장소로 구현합니다. 넥쏘는 `FE · 2021`, ELECTRIFIED GV70은 `JKEV · 2027` 공식 문서로 연결하며, BMW는 VIN 확보 전까지 문서를 추측해 연결하지 않습니다. 외부 지도·전기·수소 충전소·주유소 API와 AI 모델은 아직 연결하지 않았으며 화면에서 샘플 상태로 명시합니다.
+현재 MVP는 `2021 현대 넥쏘`, `2027 제네시스 ELECTRIFIED GV70`, `2021 BMW M3` 프리셋과 차량 최대 3대, 활성 차량 전환, 동력원별 플래너 전환, 공식 취급설명서 연결, 고정 챗봇 문맥을 브라우저 로컬 저장소로 구현합니다. 넥쏘는 `FE · 2021`, ELECTRIFIED GV70은 `JKEV · 2027` 공식 문서로 연결하며, BMW는 VIN 확보 전까지 문서를 추측해 연결하지 않습니다.
+
+AI 코파일럿에서는 현대·기아·제네시스 차명과 연식을 제조사 공식 차량 목록에서 확인한 뒤 프로필 후보를 제시합니다. 같은 연식에 여러 세대가 있으면 공식 차량 이미지와 프로젝트 코드 중 하나를 사용자가 선택해야 하며, 3대가 이미 등록된 경우 교체할 프로필과 최종 삭제·등록 여부를 다시 확인합니다. BMW는 프로필의 차명·연식을 화면에 그대로 표시하고 공식 Driver's Guide로 안내하되, 정확한 문서는 제조사 페이지에서 17자리 VIN으로 식별하도록 합니다. 쉐보레와 KGM은 현재 공식 취급설명서 시작 페이지만 안내하며, 세부 모델·연식 자동 식별은 아직 연결하지 않았습니다. 그 밖의 제조사도 실제로 확인하지 않은 공식 문서가 있는 것처럼 표현하지 않습니다.
+
+외부 지도·전기·수소 충전소·주유소 API, 리콜 데이터와 매뉴얼 RAG 모델은 아직 연결하지 않았으며 화면에서 미연동 상태를 명시합니다. 매뉴얼 RAG는 향후 백엔드에서 문서 수집 상태를 `확인 중 → 사용 가능 → 실패`로 관리하고, 저작권·재배포 조건을 확인한 문서만 서버 저장소와 검색 인덱스에 보관할 예정입니다. GitHub Pages나 브라우저 로컬 저장소에 제조사 PDF를 일괄 복제하지 않습니다.
 
 로컬 FastAPI와 차량 정보를 동기화하려면 `src/web/.env.example`을 `.env.local`로 복사한 뒤 프런트엔드를 실행합니다. 환경 변수가 없는 GitHub Pages 공개 데모는 브라우저 저장 모드로 유지되며 상단 상태 배지에서 저장 위치를 확인할 수 있습니다.
 
@@ -119,6 +125,9 @@ uv run fastapi dev
 - [현대자동차 공식 취급설명서](https://ownersmanual.hyundai.com/main?langCode=ko_KR&countryCode=A99)
 - [기아 공식 취급설명서](https://ownersmanual.kia.com/main?langCode=ko_KR&countryCode=A99)
 - [제네시스 공식 취급설명서](https://ownersmanual.genesis.com/main?langCode=ko_KR&countryCode=A99)
+- [BMW Driver's Guide](https://www.bmw.co.kr/ko/topics/owners/online-manual/bmw-driver-guide.html)
+- [쉐보레 공식 취급설명서](https://www.chevrolet.co.kr/owner-manuals)
+- [KGM 공식 취급설명서](https://www.kg-mobility.com/sr/update-download/download-center/instruction-manual)
 
 ## 팀원
 

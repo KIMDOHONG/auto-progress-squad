@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class VehicleLimitReachedError(Exception):
@@ -56,6 +56,12 @@ def initialize_database(database_path: Path) -> None:
                     )
                 ),
                 battery_capacity_kwh REAL,
+                manual_site_id TEXT,
+                manual_model_name TEXT,
+                manual_project_code TEXT,
+                manual_model_year INTEGER,
+                manual_image_url TEXT,
+                manual_verified_at TEXT,
                 is_active INTEGER NOT NULL DEFAULT 0 CHECK (is_active IN (0, 1)),
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -89,6 +95,12 @@ def initialize_database(database_path: Path) -> None:
                         )
                     ),
                     battery_capacity_kwh REAL,
+                    manual_site_id TEXT,
+                    manual_model_name TEXT,
+                    manual_project_code TEXT,
+                    manual_model_year INTEGER,
+                    manual_image_url TEXT,
+                    manual_verified_at TEXT,
                     is_active INTEGER NOT NULL DEFAULT 0 CHECK (is_active IN (0, 1)),
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
@@ -107,6 +119,23 @@ def initialize_database(database_path: Path) -> None:
                 WHERE is_active = 1;
                 """
             )
+        existing_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(vehicle_profiles)").fetchall()
+        }
+        manual_columns = {
+            "manual_site_id": "TEXT",
+            "manual_model_name": "TEXT",
+            "manual_project_code": "TEXT",
+            "manual_model_year": "INTEGER",
+            "manual_image_url": "TEXT",
+            "manual_verified_at": "TEXT",
+        }
+        for column_name, column_type in manual_columns.items():
+            if column_name not in existing_columns:
+                connection.execute(
+                    f"ALTER TABLE vehicle_profiles ADD COLUMN {column_name} {column_type}"
+                )
         connection.execute(
             "INSERT OR IGNORE INTO schema_meta(version) VALUES (?)", (SCHEMA_VERSION,)
         )
@@ -129,7 +158,9 @@ def list_vehicle_rows(database_path: Path) -> list[sqlite3.Row]:
         return connection.execute(
             """
             SELECT id, nickname, manufacturer, model, model_year, powertrain,
-                   fuel_grade, battery_capacity_kwh, is_active
+                   fuel_grade, battery_capacity_kwh, manual_site_id,
+                   manual_model_name, manual_project_code, manual_model_year,
+                   manual_image_url, manual_verified_at, is_active
             FROM vehicle_profiles
             ORDER BY created_at, id
             """
@@ -141,7 +172,9 @@ def get_vehicle_row(database_path: Path, vehicle_id: str) -> sqlite3.Row:
         row = connection.execute(
             """
             SELECT id, nickname, manufacturer, model, model_year, powertrain,
-                   fuel_grade, battery_capacity_kwh, is_active
+                   fuel_grade, battery_capacity_kwh, manual_site_id,
+                   manual_model_name, manual_project_code, manual_model_year,
+                   manual_image_url, manual_verified_at, is_active
             FROM vehicle_profiles
             WHERE id = ?
             """,
@@ -162,10 +195,14 @@ def create_vehicle(database_path: Path, values: dict[str, object]) -> sqlite3.Ro
             """
             INSERT INTO vehicle_profiles (
                 id, nickname, manufacturer, model, model_year, powertrain,
-                fuel_grade, battery_capacity_kwh, is_active
+                fuel_grade, battery_capacity_kwh, manual_site_id,
+                manual_model_name, manual_project_code, manual_model_year,
+                manual_image_url, manual_verified_at, is_active
             ) VALUES (
                 :id, :nickname, :manufacturer, :model, :model_year, :powertrain,
-                :fuel_grade, :battery_capacity_kwh, :is_active
+                :fuel_grade, :battery_capacity_kwh, :manual_site_id,
+                :manual_model_name, :manual_project_code, :manual_model_year,
+                :manual_image_url, :manual_verified_at, :is_active
             )
             """,
             {**values, "is_active": is_active},
@@ -187,7 +224,13 @@ def update_vehicle(
                 model_year = :model_year,
                 powertrain = :powertrain,
                 fuel_grade = :fuel_grade,
-                battery_capacity_kwh = :battery_capacity_kwh
+                battery_capacity_kwh = :battery_capacity_kwh,
+                manual_site_id = :manual_site_id,
+                manual_model_name = :manual_model_name,
+                manual_project_code = :manual_project_code,
+                manual_model_year = :manual_model_year,
+                manual_image_url = :manual_image_url,
+                manual_verified_at = :manual_verified_at
             WHERE id = :vehicle_id
             """,
             {**values, "vehicle_id": vehicle_id},

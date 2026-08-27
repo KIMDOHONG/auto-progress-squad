@@ -24,6 +24,14 @@ export const DEFAULT_VEHICLES: VehicleProfile[] = [
     model: "넥쏘",
     modelYear: 2021,
     powertrain: "hydrogen",
+    manual: {
+      siteId: "hmc",
+      modelName: "넥쏘",
+      projectCode: "FE",
+      modelYear: 2021,
+      imageUrl: "https://ownersmanual.hyundai.com/api/v2/hmc/files/6406/H_FE_2024.png",
+      verifiedAt: "2026-08-27T00:00:00.000Z",
+    },
   },
   {
     id: "sample-electrified-gv70",
@@ -33,6 +41,14 @@ export const DEFAULT_VEHICLES: VehicleProfile[] = [
     modelYear: 2027,
     powertrain: "electric",
     batteryCapacityKwh: 84,
+    manual: {
+      siteId: "genesis",
+      modelName: "ELECTRIFIED GV70",
+      projectCode: "JKEV",
+      modelYear: 2027,
+      imageUrl: "https://ownersmanual.genesis.com/api/v2/genesis/files/6295/JK1EV-CeresBlue-MSA-01-18F-630x240.png",
+      verifiedAt: "2026-08-27T00:00:00.000Z",
+    },
   },
   {
     id: "sample-bmwm3",

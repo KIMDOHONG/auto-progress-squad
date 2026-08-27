@@ -1,4 +1,4 @@
-import type { VehicleProfile } from "../types";
+import type { OfficialManualSiteId, VehicleProfile } from "../types";
 
 interface ApiVehicleProfile {
   id: string;
@@ -9,6 +9,12 @@ interface ApiVehicleProfile {
   powertrain: VehicleProfile["powertrain"];
   fuel_grade: VehicleProfile["fuelGrade"] | null;
   battery_capacity_kwh: number | null;
+  manual_site_id: OfficialManualSiteId | null;
+  manual_model_name: string | null;
+  manual_project_code: string | null;
+  manual_model_year: number | null;
+  manual_image_url: string | null;
+  manual_verified_at: string | null;
   is_active: boolean;
 }
 
@@ -28,6 +34,21 @@ export class VehicleApiError extends Error {
 }
 
 function fromApi(vehicle: ApiVehicleProfile): VehicleProfile {
+  const manual = vehicle.manual_site_id
+    && vehicle.manual_model_name
+    && vehicle.manual_project_code
+    && vehicle.manual_model_year
+    && vehicle.manual_image_url
+    && vehicle.manual_verified_at
+    ? {
+        siteId: vehicle.manual_site_id,
+        modelName: vehicle.manual_model_name,
+        projectCode: vehicle.manual_project_code,
+        modelYear: vehicle.manual_model_year,
+        imageUrl: vehicle.manual_image_url,
+        verifiedAt: vehicle.manual_verified_at,
+      }
+    : undefined;
   return {
     id: vehicle.id,
     nickname: vehicle.nickname,
@@ -39,6 +60,7 @@ function fromApi(vehicle: ApiVehicleProfile): VehicleProfile {
     ...(vehicle.battery_capacity_kwh
       ? { batteryCapacityKwh: vehicle.battery_capacity_kwh }
       : {}),
+    ...(manual ? { manual } : {}),
   };
 }
 
@@ -51,6 +73,12 @@ function toApi(vehicle: VehicleProfile) {
     powertrain: vehicle.powertrain,
     fuel_grade: vehicle.fuelGrade ?? null,
     battery_capacity_kwh: vehicle.batteryCapacityKwh ?? null,
+    manual_site_id: vehicle.manual?.siteId ?? null,
+    manual_model_name: vehicle.manual?.modelName ?? null,
+    manual_project_code: vehicle.manual?.projectCode ?? null,
+    manual_model_year: vehicle.manual?.modelYear ?? null,
+    manual_image_url: vehicle.manual?.imageUrl ?? null,
+    manual_verified_at: vehicle.manual?.verifiedAt ?? null,
   };
 }
 

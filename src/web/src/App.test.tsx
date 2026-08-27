@@ -128,6 +128,122 @@ describe("vehicle-aware planner", () => {
 
     expect(await screen.findByText("VIN 확인 필요")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /공식 취급설명서 열기/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/BMW M3 · 2021의 정확한 취급설명서/)).toBeInTheDocument();
+    expect(screen.queryByText(/G80 M3/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /BMW Driver's Guide 열기/ })).toHaveAttribute(
+      "href",
+      "https://www.bmw.co.kr/ko/topics/owners/online-manual/bmw-driver-guide.html",
+    );
+  });
+
+  it("shows the verified official vehicle image in the manual heading", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "매뉴얼·리콜" }));
+
+    const image = await screen.findByRole("img", { name: "현대 넥쏘 · 2021 공식 차량 이미지" });
+    expect(image).toHaveAttribute(
+      "src",
+      "https://ownersmanual.hyundai.com/api/v2/hmc/files/6406/H_FE_2024.png",
+    );
+  });
+
+  it("registers a selected 2020 K5 generation from official chat candidates", async () => {
+    window.localStorage.setItem("auto-squad.vehicle-profiles.v4", JSON.stringify({
+      version: 4,
+      vehicles: [{ id: "only-car", nickname: "기존 차량", manufacturer: "BMW", model: "M3", modelYear: 2021, powertrain: "gasoline", fuelGrade: "premium" }],
+      activeVehicleId: "only-car",
+    }));
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("ownersmanual.kia.com") && url.includes("/models")) {
+        return { ok: true, status: 200, json: async () => ({ CARS: [{ langModelName: "K5" }] }) } as Response;
+      }
+      if (url.includes("ownersmanual.kia.com") && url.includes("/model?")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            years: ["2020"],
+            yearModels: {
+              "2020": [
+                { modelName: "K5", projCode: "DL3", year: "2020", fuel: "ICE", mainImgUrl: "/api/v2/kia/files/2309/DLSD20SWP.png" },
+                { modelName: "K5", projCode: "JF", year: "2020", fuel: "ICE", mainImgUrl: "/api/v2/kia/files/2582/KFSD19SWP.png" },
+              ],
+            },
+          }),
+        } as Response;
+      }
+      if (url.includes("/models")) {
+        return { ok: true, status: 200, json: async () => ({ CARS: [] }) } as Response;
+      }
+      throw new Error(`unexpected request: ${url}`);
+    }) as typeof fetch;
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "2020 K5 등록" } });
+    fireEvent.click(screen.getByRole("button", { name: "메시지 전송" }));
+
+    expect(await screen.findByText("같은 연식에 여러 세대가 있어 차량 이미지를 보고 선택해 주세요.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2020 K5 JF 선택" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "2020 K5 DL3 선택" }));
+    fireEvent.click(await screen.findByRole("button", { name: "프로필 등록" }));
+
+    expect(await screen.findByRole("option", { name: "기아 K5 · 2020" })).toBeInTheDocument();
+    expect(screen.getByText(/DL3\) 프로필을 등록하고 활성 차량으로 변경했습니다/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "매뉴얼·리콜" }));
+    expect(await screen.findByText(/DL3 · 2020/)).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "기아 K5 · 2020 공식 차량 이미지" })).toHaveAttribute("src", "https://ownersmanual.kia.com/api/v2/kia/files/2309/DLSD20SWP.png");
+  });
+
+  it("asks which existing profile to replace when all three slots are occupied", async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("ownersmanual.kia.com") && url.includes("/models")) {
+        return { ok: true, status: 200, json: async () => ({ CARS: [{ langModelName: "K5" }] }) } as Response;
+      }
+      if (url.includes("ownersmanual.kia.com") && url.includes("/model?")) {
+        return { ok: true, status: 200, json: async () => ({ years: ["2020"], yearModels: { "2020": [
+          { modelName: "K5", projCode: "DL3", year: "2020", fuel: "ICE", mainImgUrl: "/api/v2/kia/files/2309/DLSD20SWP.png" },
+          { modelName: "K5", projCode: "JF", year: "2020", fuel: "ICE", mainImgUrl: "/api/v2/kia/files/2582/KFSD19SWP.png" },
+        ] } }) } as Response;
+      }
+      if (url.includes("/models")) return { ok: true, status: 200, json: async () => ({ CARS: [] }) } as Response;
+      throw new Error(`unexpected request: ${url}`);
+    }) as typeof fetch;
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "2020 기아 K5 등록" } });
+    fireEvent.click(screen.getByRole("button", { name: "메시지 전송" }));
+    fireEvent.click(await screen.findByRole("button", { name: "2020 K5 DL3 선택" }));
+    fireEvent.click(await screen.findByRole("button", { name: "기존 차량 교체 후 등록" }));
+
+    expect(await screen.findAllByText(/현재 프로필이 3대이고 최대 3대까지 등록할 수 있습니다/)).toHaveLength(2);
+    fireEvent.click(screen.getByText("주말 차량").closest("button") as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole("button", { name: "삭제하고 등록" }));
+
+    expect(await screen.findByRole("option", { name: "기아 K5 · 2020" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "BMW M3 · 2021" })).not.toBeInTheDocument();
+    expect(within(screen.getByLabelText("활성 차량")).getAllByRole("option")).toHaveLength(3);
+  });
+
+  it("deletes a named profile only after chat confirmation", async () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "주말 차량 프로필 삭제" } });
+    fireEvent.click(screen.getByRole("button", { name: "메시지 전송" }));
+
+    expect(await screen.findByText("주말 차량 · BMW M3 · 2021")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "프로필 삭제" }));
+
+    await waitFor(() => expect(screen.queryByRole("option", { name: "BMW M3 · 2021" })).not.toBeInTheDocument());
+    expect(screen.getByText(/주말 차량 · BMW M3 · 2021 프로필을 삭제했습니다/)).toBeInTheDocument();
+  });
+
+  it("explains that BMW was recognized but its manual was not searched", async () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "2015 BMW M3 등록" } });
+    fireEvent.click(screen.getByRole("button", { name: "메시지 전송" }));
+
+    expect(await screen.findByText(/BMW 공식 설명서는 아직 조회하지 않았습니다/)).toBeInTheDocument();
   });
 
   it("loads vehicle profiles from the configured FastAPI backend", async () => {
