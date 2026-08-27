@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react";
 import { BookIcon } from "../../components/Icons";
-import { getManualBrand, getVehicleManual, MANUAL_BRANDS } from "../../lib/manual";
+import { BMW_DRIVER_GUIDE, getManualBrand, getVehicleManual, MANUAL_BRANDS } from "../../lib/manual";
 import { getVehicleTitle } from "../../lib/vehicle";
 import type { VehicleProfile } from "../../types";
 
@@ -11,6 +12,20 @@ const EXTERNAL_LINK_PROPS = {
   target: "_blank",
   rel: "noreferrer noopener",
 } as const;
+
+function ManualVehicleVisual({ imageUrl, label }: { imageUrl?: string; label: string }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => setFailed(false), [imageUrl]);
+
+  if (!imageUrl || failed) return <BookIcon className="heading-mark" />;
+  return (
+    <div className="manual-vehicle-visual">
+      <img src={imageUrl} alt={`${label} 공식 차량 이미지`} onError={() => setFailed(true)} />
+      <span>제조사 공식 이미지</span>
+    </div>
+  );
+}
 
 export function ManualHub({ vehicle }: ManualHubProps) {
   const manual = getVehicleManual(vehicle);
@@ -25,7 +40,7 @@ export function ManualHub({ vehicle }: ManualHubProps) {
           <h1>차량 취급설명서</h1>
           <p>{getVehicleTitle(vehicle)}에 맞는 제조사 공식 문서를 안내합니다.</p>
         </div>
-        <BookIcon className="heading-mark" />
+        <ManualVehicleVisual imageUrl={manual?.imageUrl} label={getVehicleTitle(vehicle)} />
       </div>
 
       <article className={`manual-current ${manual ? "is-ready" : "is-pending"}`}>
@@ -38,13 +53,14 @@ export function ManualHub({ vehicle }: ManualHubProps) {
               <p className="manual-note">디지털 설명서, 경고등·심벌, PDF 열기·다운로드는 제조사 페이지에서 선택할 수 있습니다.</p>
             </>
           ) : requiresVin ? (
-            <p>BMW 취급설명서는 VIN으로 차량을 식별한 뒤 연결합니다. 2021 G80 M3의 VIN을 확보하기 전까지 임의의 문서를 대신 연결하지 않습니다.</p>
+            <p>{getVehicleTitle(vehicle)}의 정확한 취급설명서는 BMW Driver&apos;s Guide에서 17자리 VIN으로 차량을 식별한 뒤 연결합니다. 다른 BMW 차량의 문서를 대신 연결하지 않습니다.</p>
           ) : (
             <p>이 차량의 연식·세대·프로젝트 코드가 아직 등록되지 않았습니다. 유사 차종 문서를 자동으로 연결하지 않습니다.</p>
           )}
         </div>
         <div className="manual-actions">
           {manual ? <a className="primary-button" href={manual.manualUrl} {...EXTERNAL_LINK_PROPS}>공식 취급설명서 열기 <span aria-hidden="true">↗</span></a> : null}
+          {requiresVin ? <a className="primary-button" href={BMW_DRIVER_GUIDE.homeUrl} {...EXTERNAL_LINK_PROPS}>BMW Driver&apos;s Guide 열기 <span aria-hidden="true">↗</span></a> : null}
           {brand ? <a className="secondary-button" href={brand.homeUrl} {...EXTERNAL_LINK_PROPS}>{brand.label} 차량 찾기 <span aria-hidden="true">↗</span></a> : null}
         </div>
       </article>
@@ -63,6 +79,11 @@ export function ManualHub({ vehicle }: ManualHubProps) {
                 <strong aria-hidden="true">↗</strong>
               </a>
             ))}
+            <a href={BMW_DRIVER_GUIDE.homeUrl} {...EXTERNAL_LINK_PROPS}>
+              <span>{BMW_DRIVER_GUIDE.label}</span>
+              <small>VIN으로 차량 식별</small>
+              <strong aria-hidden="true">↗</strong>
+            </a>
           </div>
         </section>
 

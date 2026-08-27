@@ -232,6 +232,34 @@ def test_hydrogen_vehicle_profile_is_supported(client: TestClient) -> None:
     assert invalid.json()["error"]["code"] == "validation_error"
 
 
+def test_verified_manual_metadata_is_persisted_and_domain_checked(
+    client: TestClient,
+) -> None:
+    payload = vehicle_payload("verified-ioniq5")
+    payload.update(
+        {
+            "manual_site_id": "hmc",
+            "manual_model_name": "아이오닉 5",
+            "manual_project_code": "NE1",
+            "manual_model_year": 2024,
+            "manual_image_url": "https://ownersmanual.hyundai.com/api/v2/hmc/files/6753/H_NE1_2027.png",
+            "manual_verified_at": "2026-08-27T00:00:00.000Z",
+        }
+    )
+
+    response = client.post("/api/v1/vehicles", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["manual_project_code"] == "NE1"
+    assert client.get("/api/v1/vehicles").json()["items"][0]["manual_site_id"] == "hmc"
+
+    payload["id"] = "invalid-image-domain"
+    payload["manual_image_url"] = "https://example.com/car.png"
+    invalid = client.post("/api/v1/vehicles", json=payload)
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "validation_error"
+
+
 def test_schema_v2_migration_preserves_profiles_and_adds_hydrogen(tmp_path: Path) -> None:
     database_path = tmp_path / "legacy.db"
     with sqlite3.connect(database_path) as connection:
@@ -270,3 +298,8 @@ def test_schema_v2_migration_preserves_profiles_and_adds_hydrogen(tmp_path: Path
             ) VALUES ('nexo', '수소차', '현대', '넥쏘', 2021, 'hydrogen', 0)
             """
         )
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(vehicle_profiles)")
+        }
+        assert "manual_project_code" in columns
+        assert "manual_image_url" in columns

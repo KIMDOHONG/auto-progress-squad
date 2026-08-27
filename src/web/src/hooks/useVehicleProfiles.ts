@@ -9,12 +9,13 @@ import {
 } from "../lib/vehicleApi";
 import type { VehicleProfile } from "../types";
 
-const STORAGE_KEY = "auto-squad.vehicle-profiles.v3";
+const STORAGE_KEY = "auto-squad.vehicle-profiles.v4";
+const LEGACY_V3_STORAGE_KEY = "auto-squad.vehicle-profiles.v3";
 const LEGACY_V2_STORAGE_KEY = "auto-squad.vehicle-profiles.v2";
 const LEGACY_V1_STORAGE_KEY = "auto-squad.vehicle-profiles.v1";
 
 interface StoredProfiles {
-  version: 3;
+  version: 4;
   vehicles: VehicleProfile[];
   activeVehicleId: string;
 }
@@ -54,7 +55,7 @@ function connectProfiles(apiBaseUrl: string, localState: StoredProfiles): Promis
       throw new Error("동기화할 차량 정보가 없습니다.");
     }
     return {
-      version: 3 as const,
+      version: 4 as const,
       vehicles: remote.vehicles,
       activeVehicleId: remote.activeVehicleId ?? remote.vehicles[0].id,
     };
@@ -78,6 +79,12 @@ interface LegacyV1StoredProfiles {
 
 interface LegacyV2StoredProfiles {
   version: 2;
+  vehicles: VehicleProfile[];
+  activeVehicleId: string;
+}
+
+interface LegacyV3StoredProfiles {
+  version: 3;
   vehicles: VehicleProfile[];
   activeVehicleId: string;
 }
@@ -132,14 +139,62 @@ const V2_DEFAULTS = JSON.stringify([
   },
 ]);
 
+const V3_DEFAULTS = JSON.stringify([
+  {
+    id: "sample-nexo",
+    nickname: "가족 수소차",
+    manufacturer: "현대",
+    model: "넥쏘",
+    modelYear: 2021,
+    powertrain: "hydrogen",
+  },
+  {
+    id: "sample-electrified-gv70",
+    nickname: "프리미엄 EV",
+    manufacturer: "제네시스",
+    model: "ELECTRIFIED GV70",
+    modelYear: 2027,
+    powertrain: "electric",
+    batteryCapacityKwh: 84,
+  },
+  {
+    id: "sample-bmwm3",
+    nickname: "주말 차량",
+    manufacturer: "BMW",
+    model: "M3",
+    modelYear: 2021,
+    powertrain: "gasoline",
+    fuelGrade: "premium",
+  },
+]);
+
 function fallbackProfiles(): StoredProfiles {
-  return { version: 3, vehicles: DEFAULT_VEHICLES, activeVehicleId: DEFAULT_VEHICLES[0].id };
+  return { version: 4, vehicles: DEFAULT_VEHICLES, activeVehicleId: DEFAULT_VEHICLES[0].id };
 }
 
-function isValidProfiles(value: StoredProfiles | LegacyV1StoredProfiles | LegacyV2StoredProfiles): boolean {
+function isValidProfiles(value: StoredProfiles | LegacyV1StoredProfiles | LegacyV2StoredProfiles | LegacyV3StoredProfiles): boolean {
   return Array.isArray(value.vehicles)
     && value.vehicles.length > 0
     && value.vehicles.some((vehicle) => vehicle.id === value.activeVehicleId);
+}
+
+function migrateV3Profiles(): StoredProfiles | null {
+  try {
+    const raw = window.localStorage.getItem(LEGACY_V3_STORAGE_KEY);
+    if (!raw) return null;
+    const legacy = JSON.parse(raw) as LegacyV3StoredProfiles;
+    if (legacy.version !== 3 || !isValidProfiles(legacy)) return null;
+    const migrated: StoredProfiles = {
+      version: 4,
+      vehicles: JSON.stringify(legacy.vehicles) === V3_DEFAULTS ? DEFAULT_VEHICLES : legacy.vehicles,
+      activeVehicleId: legacy.activeVehicleId,
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+    window.localStorage.removeItem(LEGACY_V3_STORAGE_KEY);
+    return migrated;
+  } catch {
+    return null;
+  }
 }
 
 function migrateV2Profiles(): StoredProfiles | null {
@@ -153,8 +208,8 @@ function migrateV2Profiles(): StoredProfiles | null {
       ? "sample-electrified-gv70"
       : legacy.activeVehicleId;
     const migrated: StoredProfiles = unchangedDefaults
-      ? { version: 3, vehicles: DEFAULT_VEHICLES, activeVehicleId }
-      : { version: 3, vehicles: legacy.vehicles, activeVehicleId };
+      ? { version: 4, vehicles: DEFAULT_VEHICLES, activeVehicleId }
+      : { version: 4, vehicles: legacy.vehicles, activeVehicleId };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
     window.localStorage.removeItem(LEGACY_V2_STORAGE_KEY);
     return migrated;
@@ -171,7 +226,7 @@ function migrateV1Profiles(): StoredProfiles | null {
     if (legacy.version !== 1 || !isValidProfiles(legacy)) return null;
     const migrated = JSON.stringify(legacy.vehicles) === LEGACY_DEFAULTS
       ? fallbackProfiles()
-      : { version: 3 as const, vehicles: legacy.vehicles, activeVehicleId: legacy.activeVehicleId };
+      : { version: 4 as const, vehicles: legacy.vehicles, activeVehicleId: legacy.activeVehicleId };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
     window.localStorage.removeItem(LEGACY_V1_STORAGE_KEY);
     return migrated;
@@ -185,12 +240,12 @@ function readStoredProfiles(): StoredProfiles {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as StoredProfiles;
-      if (parsed.version === 3 && isValidProfiles(parsed)) return parsed;
+      if (parsed.version === 4 && isValidProfiles(parsed)) return parsed;
     }
   } catch {
     // Fall through to the versioned migration and defaults.
   }
-  return migrateV2Profiles() ?? migrateV1Profiles() ?? fallbackProfiles();
+  return migrateV3Profiles() ?? migrateV2Profiles() ?? migrateV1Profiles() ?? fallbackProfiles();
 }
 
 function persist(value: StoredProfiles): void {
@@ -276,6 +331,19 @@ export function useVehicleProfiles() {
     }));
   }, [apiBaseUrl, runApiAction, updateState]);
 
+  const replaceVehicle = useCallback(async (vehicleId: string, replacement: VehicleProfile) => {
+    const vehicle = { ...replacement, id: vehicleId };
+    await runApiAction(async () => {
+      await updateApiVehicle(apiBaseUrl, vehicle);
+      await activateApiVehicle(apiBaseUrl, vehicleId);
+    });
+    updateState((current) => ({
+      ...current,
+      vehicles: current.vehicles.map((item) => item.id === vehicleId ? vehicle : item),
+      activeVehicleId: vehicleId,
+    }));
+  }, [apiBaseUrl, runApiAction, updateState]);
+
   const deleteVehicle = useCallback(async (vehicleId: string) => {
     await runApiAction(() => deleteApiVehicle(apiBaseUrl, vehicleId));
     updateState((current) => {
@@ -286,5 +354,5 @@ export function useVehicleProfiles() {
     });
   }, [apiBaseUrl, runApiAction, updateState]);
 
-  return { vehicles: state.vehicles, activeVehicle, syncStatus, setActiveVehicle, addVehicle, updateVehicle, deleteVehicle };
+  return { vehicles: state.vehicles, activeVehicle, syncStatus, setActiveVehicle, addVehicle, updateVehicle, replaceVehicle, deleteVehicle };
 }
