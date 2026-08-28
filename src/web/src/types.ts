@@ -13,6 +13,22 @@ export interface OfficialManualMetadata {
   verifiedAt: string;
 }
 
+export type ManualIngestionState = "unavailable" | "pending" | "ready" | "failed";
+
+export interface ManualIngestionStatus {
+  vehicleId: string;
+  status: ManualIngestionState;
+  documentKey?: string;
+  sourceUrl?: string;
+  attemptCount: number;
+  failureCode?: string;
+  failureMessage?: string;
+  queuedAt?: string;
+  updatedAt?: string;
+  readyAt?: string;
+  canSearch: boolean;
+}
+
 export interface VehicleProfile {
   id: string;
   nickname: string;

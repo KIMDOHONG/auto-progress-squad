@@ -85,6 +85,10 @@ User
      ├─ current 선택 상태
      ├─ VehicleSpecification
      ├─ ManualDocument
+     ├─ ManualIngestionJob
+     │   ├─ document_key·source_url
+     │   ├─ status (pending / ready / failed)
+     │   └─ attempt_count·failure_code·failure_message
      ├─ RecallCache
      ├─ DriveEnergyPlan (EV, 수소전기차 또는 내연기관)
      └─ Conversation
@@ -104,7 +108,8 @@ UsedCarAnalysis
 - 공식 차량 자동 식별 지원 범위를 제조사별로 구분하고, 실제로 조회하지 않은 제조사의 설명서를 확인했다고 표현하지 않습니다.
 - VIN은 민감한 차량 식별값으로 취급합니다. 공개 저장소·로그·이슈에 원문을 기록하지 않고, 저장 기능을 추가할 때는 별도 동의·마스킹·암호화 정책을 먼저 정의합니다.
 - 제조사 취급설명서 사이트는 iframe 제한 때문에 새 탭으로 열며, 공식 원문을 저장소에 복제하지 않습니다.
-- 매뉴얼 RAG는 백엔드 작업 큐와 문서 저장소에서 `pending`, `ready`, `failed` 상태를 관리합니다. `ready` 전에는 답변을 막고 ‘취급설명서를 확인 중입니다’ 상태를 표시합니다.
+- 매뉴얼 RAG는 백엔드 작업 큐와 문서 저장소에서 `pending`, `ready`, `failed` 상태를 관리합니다. 차량의 정확한 공식 문서가 바뀌면 기존 상태를 재사용하지 않고 `pending`으로 초기화하며, `ready` 전에는 답변을 막고 ‘취급설명서를 확인 중입니다’ 상태를 표시합니다.
+- 현재 구현은 SQLite 상태 레코드와 조회·재시도 API까지입니다. 실제 문서 다운로드·텍스트 추출·인덱스 작업자는 별도 단계로 연결하며, GitHub Pages와 브라우저 저장소에는 제조사 PDF를 보관하지 않습니다.
 - 여러 장으로 나뉜 쉐보레·KGM 문서는 제조사별 어댑터에서 하나의 논리 매뉴얼로 묶되, 원문 URL과 장 제목을 각 청크에 보존합니다.
 - EV 결과에는 입력값, 계산식, 외부 데이터 시각을 표시합니다.
 - 중고차 결과는 사고 확정이 아닌 가능성·신뢰도·확인 항목으로 표현합니다.

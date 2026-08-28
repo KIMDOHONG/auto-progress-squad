@@ -4,9 +4,10 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import quote
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class VehicleLimitReachedError(Exception):
@@ -25,6 +26,7 @@ class LastVehicleDeletionError(Exception):
 def connect(database_path: Path) -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(database_path)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
     try:
         yield connection
     finally:
@@ -69,6 +71,7 @@ def initialize_database(database_path: Path) -> None:
             CREATE UNIQUE INDEX IF NOT EXISTS idx_vehicle_profiles_one_active
             ON vehicle_profiles(is_active)
             WHERE is_active = 1;
+
             """
         )
         table_sql = connection.execute(
@@ -136,10 +139,98 @@ def initialize_database(database_path: Path) -> None:
                 connection.execute(
                     f"ALTER TABLE vehicle_profiles ADD COLUMN {column_name} {column_type}"
                 )
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS manual_ingestion_jobs (
+                vehicle_id TEXT PRIMARY KEY
+                    REFERENCES vehicle_profiles(id) ON DELETE CASCADE,
+                document_key TEXT NOT NULL,
+                source_url TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending' CHECK (
+                    status IN ('pending', 'ready', 'failed')
+                ),
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                failure_code TEXT,
+                failure_message TEXT,
+                queued_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ready_at TEXT
+            );
+            """
+        )
         connection.execute(
             "INSERT OR IGNORE INTO schema_meta(version) VALUES (?)", (SCHEMA_VERSION,)
         )
         connection.commit()
+
+
+def _manual_document_identity(values: dict[str, object]) -> tuple[str, str] | None:
+    site_id = values.get("manual_site_id")
+    model_name = values.get("manual_model_name")
+    project_code = values.get("manual_project_code")
+    model_year = values.get("manual_model_year")
+    if not all((site_id, model_name, project_code, model_year)):
+        return None
+    domains = {
+        "hmc": "ownersmanual.hyundai.com",
+        "kia": "ownersmanual.kia.com",
+        "genesis": "ownersmanual.genesis.com",
+    }
+    domain = domains.get(str(site_id))
+    if domain is None:
+        return None
+    document_key = f"{site_id}:{project_code}:{model_year}"
+    source_url = (
+        f"https://{domain}/manual/{quote(str(model_name), safe='')}"
+        f"?projCode={quote(str(project_code), safe='')}&year={model_year}"
+        "&langCode=ko_KR&countryCode=A99"
+    )
+    return document_key, source_url
+
+
+def _sync_manual_ingestion_job(
+    connection: sqlite3.Connection, vehicle_id: str, values: dict[str, object]
+) -> None:
+    identity = _manual_document_identity(values)
+    if identity is None:
+        connection.execute(
+            "DELETE FROM manual_ingestion_jobs WHERE vehicle_id = ?", (vehicle_id,)
+        )
+        return
+    document_key, source_url = identity
+    current = connection.execute(
+        "SELECT document_key FROM manual_ingestion_jobs WHERE vehicle_id = ?",
+        (vehicle_id,),
+    ).fetchone()
+    if current is not None and current["document_key"] == document_key:
+        connection.execute(
+            """
+            UPDATE manual_ingestion_jobs
+            SET source_url = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE vehicle_id = ?
+            """,
+            (source_url, vehicle_id),
+        )
+        return
+    connection.execute(
+        """
+        INSERT INTO manual_ingestion_jobs (
+            vehicle_id, document_key, source_url, status, attempt_count,
+            failure_code, failure_message, queued_at, updated_at, ready_at
+        ) VALUES (?, ?, ?, 'pending', 0, NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)
+        ON CONFLICT(vehicle_id) DO UPDATE SET
+            document_key = excluded.document_key,
+            source_url = excluded.source_url,
+            status = 'pending',
+            attempt_count = 0,
+            failure_code = NULL,
+            failure_message = NULL,
+            queued_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP,
+            ready_at = NULL
+        """,
+        (vehicle_id, document_key, source_url),
+    )
 
 
 def database_is_ready(database_path: Path) -> bool:
@@ -207,6 +298,7 @@ def create_vehicle(database_path: Path, values: dict[str, object]) -> sqlite3.Ro
             """,
             {**values, "is_active": is_active},
         )
+        _sync_manual_ingestion_job(connection, str(values["id"]), values)
         connection.commit()
     return get_vehicle_row(database_path, str(values["id"]))
 
@@ -237,6 +329,7 @@ def update_vehicle(
         )
         if cursor.rowcount == 0:
             raise VehicleNotFoundError
+        _sync_manual_ingestion_job(connection, vehicle_id, values)
         connection.commit()
     return get_vehicle_row(database_path, vehicle_id)
 
@@ -274,3 +367,45 @@ def delete_vehicle(database_path: Path, vehicle_id: str) -> None:
                 (replacement_id,),
             )
         connection.commit()
+
+
+def get_manual_ingestion_row(
+    database_path: Path, vehicle_id: str
+) -> sqlite3.Row | None:
+    get_vehicle_row(database_path, vehicle_id)
+    with connect(database_path) as connection:
+        return connection.execute(
+            """
+            SELECT vehicle_id, document_key, source_url, status, attempt_count,
+                   failure_code, failure_message, queued_at, updated_at, ready_at
+            FROM manual_ingestion_jobs
+            WHERE vehicle_id = ?
+            """,
+            (vehicle_id,),
+        ).fetchone()
+
+
+def retry_manual_ingestion(database_path: Path, vehicle_id: str) -> sqlite3.Row:
+    get_vehicle_row(database_path, vehicle_id)
+    with connect(database_path) as connection:
+        cursor = connection.execute(
+            """
+            UPDATE manual_ingestion_jobs
+            SET status = 'pending',
+                attempt_count = attempt_count + 1,
+                failure_code = NULL,
+                failure_message = NULL,
+                queued_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP,
+                ready_at = NULL
+            WHERE vehicle_id = ?
+            """,
+            (vehicle_id,),
+        )
+        if cursor.rowcount == 0:
+            raise ValueError("verified_manual_required")
+        connection.commit()
+    row = get_manual_ingestion_row(database_path, vehicle_id)
+    if row is None:  # pragma: no cover - guarded by the update above
+        raise ValueError("verified_manual_required")
+    return row

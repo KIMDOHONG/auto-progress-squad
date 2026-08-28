@@ -26,6 +26,7 @@ export interface VehicleSyncStatus {
   mode: VehicleSyncMode;
   label: string;
   detail: string;
+  apiBaseUrl?: string;
 }
 
 const LOCAL_STATUS: VehicleSyncStatus = {
@@ -287,7 +288,7 @@ export function useVehicleProfiles() {
         if (cancelled) return;
         persist(next);
         setState(next);
-        setSyncStatus({ mode: "api", label: "SQLite 동기화", detail: "차량 정보가 FastAPI와 동기화됩니다." });
+        setSyncStatus({ mode: "api", label: "SQLite 동기화", detail: "차량 정보가 FastAPI와 동기화됩니다.", apiBaseUrl });
       } catch {
         if (!cancelled) {
           setSyncStatus({ mode: "error", label: "로컬 대체 모드", detail: "API 연결에 실패해 이 브라우저에만 저장합니다." });

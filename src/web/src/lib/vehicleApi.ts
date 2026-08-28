@@ -1,4 +1,4 @@
-import type { OfficialManualSiteId, VehicleProfile } from "../types";
+import type { ManualIngestionStatus, OfficialManualSiteId, VehicleProfile } from "../types";
 
 interface ApiVehicleProfile {
   id: string;
@@ -25,6 +25,20 @@ interface ApiVehicleList {
 
 interface ApiErrorPayload {
   error?: { code?: string; message?: string };
+}
+
+interface ApiManualIngestionStatus {
+  vehicle_id: string;
+  status: ManualIngestionStatus["status"];
+  document_key: string | null;
+  source_url: string | null;
+  attempt_count: number;
+  failure_code: string | null;
+  failure_message: string | null;
+  queued_at: string | null;
+  updated_at: string | null;
+  ready_at: string | null;
+  can_search: boolean;
 }
 
 export class VehicleApiError extends Error {
@@ -79,6 +93,22 @@ function toApi(vehicle: VehicleProfile) {
     manual_model_year: vehicle.manual?.modelYear ?? null,
     manual_image_url: vehicle.manual?.imageUrl ?? null,
     manual_verified_at: vehicle.manual?.verifiedAt ?? null,
+  };
+}
+
+function ingestionFromApi(value: ApiManualIngestionStatus): ManualIngestionStatus {
+  return {
+    vehicleId: value.vehicle_id,
+    status: value.status,
+    attemptCount: value.attempt_count,
+    canSearch: value.can_search,
+    ...(value.document_key ? { documentKey: value.document_key } : {}),
+    ...(value.source_url ? { sourceUrl: value.source_url } : {}),
+    ...(value.failure_code ? { failureCode: value.failure_code } : {}),
+    ...(value.failure_message ? { failureMessage: value.failure_message } : {}),
+    ...(value.queued_at ? { queuedAt: value.queued_at } : {}),
+    ...(value.updated_at ? { updatedAt: value.updated_at } : {}),
+    ...(value.ready_at ? { readyAt: value.ready_at } : {}),
   };
 }
 
@@ -138,4 +168,21 @@ export async function deleteApiVehicle(baseUrl: string, vehicleId: string) {
   await request<void>(baseUrl, `/api/v1/vehicles/${encodeURIComponent(vehicleId)}`, {
     method: "DELETE",
   });
+}
+
+export async function getApiManualIngestion(baseUrl: string, vehicleId: string) {
+  const response = await request<ApiManualIngestionStatus>(
+    baseUrl,
+    `/api/v1/vehicles/${encodeURIComponent(vehicleId)}/manual-ingestion`,
+  );
+  return ingestionFromApi(response);
+}
+
+export async function retryApiManualIngestion(baseUrl: string, vehicleId: string) {
+  const response = await request<ApiManualIngestionStatus>(
+    baseUrl,
+    `/api/v1/vehicles/${encodeURIComponent(vehicleId)}/manual-ingestion/retry`,
+    { method: "POST" },
+  );
+  return ingestionFromApi(response);
 }

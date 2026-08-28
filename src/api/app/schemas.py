@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 Powertrain = Literal["electric", "hydrogen", "gasoline", "diesel", "hybrid"]
 FuelGrade = Literal["regular", "premium", "super-premium", "diesel", "high-cetane"]
 ManualSiteId = Literal["hmc", "kia", "genesis"]
+ManualIngestionState = Literal["unavailable", "pending", "ready", "failed"]
 
 
 class ApiErrorDetail(BaseModel):
@@ -107,6 +108,20 @@ class VehicleUpdate(VehiclePayload):
 class VehicleListResponse(BaseModel):
     items: list[VehicleProfile]
     active_vehicle_id: str | None
+
+
+class ManualIngestionStatus(BaseModel):
+    vehicle_id: str
+    status: ManualIngestionState
+    document_key: str | None = None
+    source_url: str | None = None
+    attempt_count: int = 0
+    failure_code: str | None = None
+    failure_message: str | None = None
+    queued_at: str | None = None
+    updated_at: str | None = None
+    ready_at: str | None = None
+    can_search: bool = False
 
 
 class ManualSearchRequest(BaseModel):
