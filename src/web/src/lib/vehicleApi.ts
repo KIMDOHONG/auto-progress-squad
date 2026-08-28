@@ -27,7 +27,11 @@ interface ApiVehicleList {
 }
 
 interface ApiErrorPayload {
-  error?: { code?: string; message?: string };
+  error?: {
+    code?: string;
+    message?: string;
+    details?: Array<Record<string, unknown>>;
+  };
 }
 
 interface ApiManualIngestionStatus {
@@ -57,7 +61,11 @@ interface ApiManualSearchResult {
 }
 
 export class VehicleApiError extends Error {
-  constructor(public readonly code: string, message: string) {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly details?: Array<Record<string, unknown>>,
+  ) {
     super(message);
   }
 }
@@ -147,6 +155,7 @@ async function request<T>(baseUrl: string, path: string, init?: RequestInit): Pr
     throw new VehicleApiError(
       payload.error?.code ?? "api_error",
       payload.error?.message ?? "차량 정보를 처리하지 못했습니다.",
+      payload.error?.details,
     );
   }
 

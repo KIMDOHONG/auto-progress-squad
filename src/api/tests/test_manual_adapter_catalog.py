@@ -114,6 +114,19 @@ def test_catalog_lookup_requires_generation_when_same_year_has_multiple(
 
     assert ambiguous.status_code == 409
     assert ambiguous.json()["error"]["code"] == "manual_generation_required"
+    assert ambiguous.json()["error"]["details"] == [
+        {
+            "generation": "T1",
+            "manual_title": "테스트 SUV - 취급설명서 (2025.01)",
+            "source_checked_at": "2026-08-28",
+        },
+        {
+            "generation": "T2",
+            "manual_title": "테스트 SUV - 취급설명서 (2025.01)",
+            "source_checked_at": "2026-08-28",
+        },
+    ]
+    assert "official_url" not in ambiguous.json()["error"]["details"][0]
     assert exact.status_code == 200
     assert exact.json()["generation"] == "T2"
 
@@ -218,6 +231,43 @@ def test_exact_catalog_mapping_attaches_to_vehicle_without_guessing_image(
         "/api/v1/vehicles/kgm-test/manual-ingestion"
     ).json()
     assert ingestion["status"] == "unavailable"
+
+
+def test_catalog_attachment_returns_generation_choices_before_exact_selection(
+    client: TestClient,
+) -> None:
+    write_catalog(
+        client.app.state.settings.manual_source_dir,
+        [mapping(generation="T2"), mapping(generation="T1")],
+    )
+    assert client.post(
+        "/api/v1/vehicles",
+        json={
+            "id": "kgm-multiple-generations",
+            "nickname": "세대 선택 차량",
+            "manufacturer": "KGM",
+            "model": "테스트 SUV",
+            "model_year": 2025,
+            "powertrain": "gasoline",
+            "fuel_grade": "regular",
+        },
+    ).status_code == 201
+
+    ambiguous = client.post(
+        "/api/v1/vehicles/kgm-multiple-generations/manual-adapters/kgm",
+        json={"generation": None},
+    )
+    exact = client.post(
+        "/api/v1/vehicles/kgm-multiple-generations/manual-adapters/kgm",
+        json={"generation": "T2"},
+    )
+
+    assert ambiguous.status_code == 409
+    assert [
+        item["generation"] for item in ambiguous.json()["error"]["details"]
+    ] == ["T1", "T2"]
+    assert exact.status_code == 200
+    assert exact.json()["manual_generation"] == "T2"
 
 
 def test_catalog_attachment_rejects_manufacturer_mismatch(

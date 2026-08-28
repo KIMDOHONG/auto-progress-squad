@@ -85,7 +85,12 @@ def manual_catalog_api_error(error: ManualAdapterCatalogError) -> ApiError:
         status_code = status.HTTP_409_CONFLICT
     else:
         status_code = status.HTTP_404_NOT_FOUND
-    return ApiError(status_code, error.code, error.message)
+    return ApiError(
+        status_code,
+        error.code,
+        error.message,
+        details=error.details,
+    )
 
 
 @router.get("/health", response_model=HealthResponse, tags=["system"])

@@ -12,7 +12,14 @@ interface ManualHubProps {
   onAttachManualAdapter?: (
     vehicleId: string,
     adapterId: CatalogManualAdapterId,
+    generation?: string,
   ) => Promise<VehicleProfile>;
+}
+
+interface ManualGenerationOption {
+  generation: string;
+  manualTitle: string;
+  sourceCheckedAt: string;
 }
 
 const EXTERNAL_LINK_PROPS = {
@@ -43,6 +50,20 @@ function localIngestionStatus(vehicle: VehicleProfile): ManualIngestionStatus {
   };
 }
 
+function getManualGenerationOptions(error: VehicleApiError): ManualGenerationOption[] {
+  return (error.details ?? []).flatMap((detail) => {
+    const generation = detail.generation;
+    const manualTitle = detail.manual_title;
+    const sourceCheckedAt = detail.source_checked_at;
+    if (
+      typeof generation !== "string"
+      || typeof manualTitle !== "string"
+      || typeof sourceCheckedAt !== "string"
+    ) return [];
+    return [{ generation, manualTitle, sourceCheckedAt }];
+  });
+}
+
 export function ManualHub({ vehicle, syncStatus, onAttachManualAdapter }: ManualHubProps) {
   const manual = getVehicleManual(vehicle);
   const brand = getManualBrand(vehicle.manufacturer);
@@ -56,10 +77,14 @@ export function ManualHub({ vehicle, syncStatus, onAttachManualAdapter }: Manual
   const [searchError, setSearchError] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
   const [linkNotice, setLinkNotice] = useState<string | null>(null);
+  const [generationOptions, setGenerationOptions] = useState<ManualGenerationOption[]>([]);
+  const [selectedGeneration, setSelectedGeneration] = useState("");
 
   useEffect(() => {
     setLinking(false);
     setLinkNotice(null);
+    setGenerationOptions([]);
+    setSelectedGeneration("");
   }, [vehicle.id]);
 
   useEffect(() => {
@@ -119,19 +144,34 @@ export function ManualHub({ vehicle, syncStatus, onAttachManualAdapter }: Manual
     }
   };
 
-  const attachCatalogManual = async () => {
+  const attachCatalogManual = async (generation?: string) => {
     if (!catalogAdapterId || !onAttachManualAdapter) return;
     setLinking(true);
     setLinkNotice(null);
     try {
-      await onAttachManualAdapter(vehicle.id, catalogAdapterId);
+      if (generation) {
+        await onAttachManualAdapter(vehicle.id, catalogAdapterId, generation);
+      } else {
+        await onAttachManualAdapter(vehicle.id, catalogAdapterId);
+      }
+      setGenerationOptions([]);
+      setSelectedGeneration("");
       setLinkNotice("승인된 차명·연식·세대 매뉴얼을 차량 프로필에 연결했습니다.");
     } catch (error) {
       if (error instanceof VehicleApiError && error.code === "manual_generation_required") {
-        setLinkNotice("같은 차명과 연식에 여러 세대가 있어 세대 선택 기능이 필요합니다.");
+        const options = getManualGenerationOptions(error);
+        setGenerationOptions(options);
+        setSelectedGeneration("");
+        setLinkNotice(options.length > 0
+          ? "같은 차명과 연식에 여러 세대가 있습니다. 차량에 맞는 세대를 선택해 주세요."
+          : "같은 차명과 연식에 여러 세대가 있지만 선택 후보를 확인하지 못했습니다.");
       } else if (error instanceof VehicleApiError && error.code === "manual_mapping_not_found") {
+        setGenerationOptions([]);
+        setSelectedGeneration("");
         setLinkNotice("정확히 일치하는 승인 매뉴얼 매핑이 없습니다.");
       } else {
+        setGenerationOptions([]);
+        setSelectedGeneration("");
         setLinkNotice(error instanceof Error ? error.message : "승인 매뉴얼을 연결하지 못했습니다.");
       }
     } finally {
@@ -182,7 +222,7 @@ export function ManualHub({ vehicle, syncStatus, onAttachManualAdapter }: Manual
           {manual ? <a className="primary-button" href={manual.manualUrl} {...EXTERNAL_LINK_PROPS}>공식 취급설명서 열기 <span aria-hidden="true">↗</span></a> : null}
           {requiresVin ? <a className="primary-button" href={BMW_DRIVER_GUIDE.homeUrl} {...EXTERNAL_LINK_PROPS}>BMW Driver&apos;s Guide 열기 <span aria-hidden="true">↗</span></a> : null}
           {brand ? <a className="secondary-button" href={brand.homeUrl} {...EXTERNAL_LINK_PROPS}>{brand.label} 차량 찾기 <span aria-hidden="true">↗</span></a> : null}
-          {!manual && catalogAdapterId && syncStatus.mode === "api" && onAttachManualAdapter ? (
+          {!manual && generationOptions.length === 0 && catalogAdapterId && syncStatus.mode === "api" && onAttachManualAdapter ? (
             <button className="secondary-button" type="button" disabled={linking} onClick={() => void attachCatalogManual()}>
               {linking ? "승인 매핑 확인 중" : "승인 매뉴얼 연결"}
             </button>
@@ -190,6 +230,38 @@ export function ManualHub({ vehicle, syncStatus, onAttachManualAdapter }: Manual
         </div>
       </article>
       {linkNotice ? <p className="manual-link-notice" role="status">{linkNotice}</p> : null}
+      {!manual && generationOptions.length > 0 ? (
+        <fieldset className="manual-generation-picker">
+          <legend>차량 세대 선택</legend>
+          <p>연결할 차량과 정확히 일치하는 세대를 선택해야 합니다. 첫 번째 후보를 자동으로 선택하지 않습니다.</p>
+          <div className="manual-generation-options">
+            {generationOptions.map((option) => (
+              <label key={option.generation} className={selectedGeneration === option.generation ? "is-selected" : ""}>
+                <input
+                  type="radio"
+                  name={`manual-generation-${vehicle.id}`}
+                  value={option.generation}
+                  checked={selectedGeneration === option.generation}
+                  onChange={(event) => setSelectedGeneration(event.target.value)}
+                />
+                <span>
+                  <strong>{option.generation}</strong>
+                  <small>{option.manualTitle}</small>
+                  <small>출처 확인일 {option.sourceCheckedAt}</small>
+                </span>
+              </label>
+            ))}
+          </div>
+          <button
+            className="primary-button"
+            type="button"
+            disabled={linking || !selectedGeneration}
+            onClick={() => void attachCatalogManual(selectedGeneration)}
+          >
+            {linking ? "선택한 세대 연결 중" : "선택한 세대로 연결"}
+          </button>
+        </fieldset>
+      ) : null}
 
       <div className="manual-grid">
         <section className="manual-source-section" aria-labelledby="manual-brand-title">
