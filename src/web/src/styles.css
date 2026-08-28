@@ -187,6 +187,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .manual-current-copy h2 { margin: 0; font-size: 24px; letter-spacing: -.025em; }
 .manual-current-copy p { max-width: 720px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
 .manual-current-copy p strong { color: var(--ink); }
+.manual-link-notice { margin: -8px 0 0; border: 1px solid var(--line); border-radius: 12px; background: white; padding: 11px 14px; color: var(--muted); font-size: 12px; }
 .manual-status { width: fit-content; border-radius: 999px; background: #e5f8ef; color: #087e5d; padding: 6px 9px; font-size: 10px; font-weight: 800; }
 .is-pending .manual-status { background: #fff0d8; color: #a85c00; }
 .manual-note { font-size: 11px !important; }

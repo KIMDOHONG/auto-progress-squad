@@ -142,6 +142,7 @@ def test_openapi_exposes_planned_contracts(client: TestClient) -> None:
     assert "/api/v1/manual/search" in paths
     assert "/api/v1/manual-adapters" in paths
     assert "/api/v1/manual-adapters/{adapter_id}/resolve" in paths
+    assert "/api/v1/vehicles/{vehicle_id}/manual-adapters/{adapter_id}" in paths
     assert "/api/v1/vehicles/{vehicle_id}/recalls" in paths
 
     resolve_responses = paths[
@@ -405,7 +406,10 @@ def test_schema_v2_migration_preserves_profiles_and_adds_hydrogen(tmp_path: Path
             row[1] for row in connection.execute("PRAGMA table_info(vehicle_profiles)")
         }
         assert "manual_project_code" in columns
+        assert "manual_generation" in columns
         assert "manual_image_url" in columns
+        assert "manual_title" in columns
+        assert "manual_source_url" in columns
         ingestion_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(manual_ingestion_jobs)")
         }

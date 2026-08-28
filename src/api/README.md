@@ -41,6 +41,7 @@ uv run pytest
 | `POST /api/v1/manual/search` | `ready` 차량 문서의 출처 검색 |
 | `GET /api/v1/manual-adapters` | 제조사별 식별·연동·저장 정책 조회 |
 | `POST /api/v1/manual-adapters/{adapter_id}/resolve` | 승인된 쉐보레·KGM 모델·연식·세대 매핑 조회 |
+| `POST /api/v1/vehicles/{vehicle_id}/manual-adapters/{adapter_id}` | 정확한 승인 매핑을 차량 프로필에 연결 |
 | `GET /api/v1/vehicles/{vehicle_id}/recalls` | 계약만 제공, 현재 `503` |
 
 매뉴얼 작업자는 `uv run python -m app.manual_worker`로 실행합니다. manifest에 승인된 공식 HTTPS 출처와 서버 디렉터리 내부 파일만 처리하며, 제조사 PDF를 저장소에 커밋하거나 브라우저로 복제하지 않습니다. 리콜 API의 `503`은 미연동 상태를 성공인 것처럼 보이지 않도록 의도적으로 실패 폐쇄한 상태입니다.

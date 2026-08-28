@@ -14,6 +14,7 @@ from .database import (
     create_vehicle,
     database_is_ready,
     delete_vehicle,
+    get_vehicle_row,
     get_manual_ingestion_row,
     list_vehicle_rows,
     manual_document_is_indexed,
@@ -36,6 +37,7 @@ from .schemas import (
     ManualSearchResponse,
     ManualAdapterCapabilityResponse,
     ManualAdapterListResponse,
+    ManualCatalogAttachRequest,
     ManualCatalogLookupRequest,
     ManualCatalogLookupResponse,
     ManualIngestionStatus,
@@ -68,6 +70,22 @@ def manual_ingestion_from_row(
     record = dict(row)
     record["can_search"] = record["status"] == "ready"
     return ManualIngestionStatus(**record)
+
+
+def manual_catalog_api_error(error: ManualAdapterCatalogError) -> ApiError:
+    if error.code in {
+        "manual_adapter_catalog_not_found",
+        "manual_adapter_catalog_invalid",
+        "manual_adapter_catalog_duplicate_chapter",
+        "manual_adapter_catalog_duplicate_mapping",
+        "manual_adapter_source_not_allowed",
+    }:
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    elif error.code == "manual_generation_required":
+        status_code = status.HTTP_409_CONFLICT
+    else:
+        status_code = status.HTTP_404_NOT_FOUND
+    return ApiError(status_code, error.code, error.message)
 
 
 @router.get("/health", response_model=HealthResponse, tags=["system"])
@@ -133,19 +151,7 @@ def resolve_manual_adapter(
             generation=payload.generation,
         )
     except ManualAdapterCatalogError as error:
-        if error.code in {
-            "manual_adapter_catalog_not_found",
-            "manual_adapter_catalog_invalid",
-            "manual_adapter_catalog_duplicate_chapter",
-            "manual_adapter_catalog_duplicate_mapping",
-            "manual_adapter_source_not_allowed",
-        }:
-            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        elif error.code == "manual_generation_required":
-            status_code = status.HTTP_409_CONFLICT
-        else:
-            status_code = status.HTTP_404_NOT_FOUND
-        raise ApiError(status_code, error.code, error.message) from None
+        raise manual_catalog_api_error(error) from None
 
     return ManualCatalogLookupResponse(
         manufacturer_id=entry.manufacturer_id,
@@ -157,6 +163,87 @@ def resolve_manual_adapter(
         source_checked_at=entry.source_checked_at,
         chapters=[asdict(chapter) for chapter in entry.chapters],
     )
+
+
+@router.post(
+    "/vehicles/{vehicle_id}/manual-adapters/{adapter_id}",
+    response_model=VehicleProfile,
+    responses={
+        404: {"model": ApiErrorResponse},
+        409: {"model": ApiErrorResponse},
+        503: {"model": ApiErrorResponse},
+    },
+    tags=["manual", "vehicles"],
+)
+def attach_manual_adapter(
+    request: Request,
+    vehicle_id: str,
+    adapter_id: str,
+    payload: ManualCatalogAttachRequest,
+) -> VehicleProfile:
+    if adapter_id not in CATALOG_MANUFACTURERS:
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND,
+            "manual_adapter_catalog_not_supported",
+            "이 제조사는 승인 카탈로그 방식으로 연결하지 않습니다.",
+        )
+    try:
+        vehicle_row = get_vehicle_row(
+            request.app.state.settings.database_path, vehicle_id
+        )
+    except VehicleNotFoundError:
+        raise vehicle_not_found() from None
+
+    manufacturer_aliases = {
+        "chevrolet": {"쉐보레", "chevrolet"},
+        "kgm": {"kgm", "kg모빌리티", "kg mobility", "쌍용", "쌍용자동차"},
+    }
+    if str(vehicle_row["manufacturer"]).strip().casefold() not in {
+        alias.casefold() for alias in manufacturer_aliases[adapter_id]
+    }:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "manual_adapter_manufacturer_mismatch",
+            "차량 제조사와 선택한 매뉴얼 어댑터가 일치하지 않습니다.",
+        )
+
+    try:
+        entries = load_manual_adapter_catalog(
+            request.app.state.settings.manual_source_dir
+        )
+        entry = resolve_manual_catalog_entry(
+            entries,
+            manufacturer_id=adapter_id,
+            model=str(vehicle_row["model"]),
+            model_year=int(vehicle_row["model_year"]),
+            generation=payload.generation,
+        )
+    except ManualAdapterCatalogError as error:
+        raise manual_catalog_api_error(error) from None
+
+    values = dict(vehicle_row)
+    values.update(
+        {
+            "manual_site_id": entry.manufacturer_id,
+            "manual_model_name": entry.model,
+            "manual_project_code": None,
+            "manual_generation": entry.generation,
+            "manual_model_year": entry.model_year,
+            "manual_image_url": None,
+            "manual_title": entry.manual_title,
+            "manual_source_url": entry.official_url,
+            "manual_verified_at": entry.source_checked_at,
+        }
+    )
+    values.pop("id", None)
+    values.pop("is_active", None)
+    validated = VehicleUpdate(**values)
+    row = update_vehicle(
+        request.app.state.settings.database_path,
+        vehicle_id,
+        validated.model_dump(),
+    )
+    return vehicle_from_row(row)
 
 
 @router.get("/vehicles", response_model=VehicleListResponse, tags=["vehicles"])
