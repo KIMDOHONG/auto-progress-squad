@@ -85,6 +85,10 @@ User
      ├─ current 선택 상태
      ├─ VehicleSpecification
      ├─ ManualDocument
+     │   ├─ document_key·document_name·source_url
+     │   └─ content_sha256·page_count·ingested_at
+     ├─ ManualChunk
+     │   └─ document_key·page·section·content
      ├─ ManualIngestionJob
      │   ├─ document_key·source_url
      │   ├─ status (pending / ready / failed)
@@ -109,7 +113,9 @@ UsedCarAnalysis
 - VIN은 민감한 차량 식별값으로 취급합니다. 공개 저장소·로그·이슈에 원문을 기록하지 않고, 저장 기능을 추가할 때는 별도 동의·마스킹·암호화 정책을 먼저 정의합니다.
 - 제조사 취급설명서 사이트는 iframe 제한 때문에 새 탭으로 열며, 공식 원문을 저장소에 복제하지 않습니다.
 - 매뉴얼 RAG는 백엔드 작업 큐와 문서 저장소에서 `pending`, `ready`, `failed` 상태를 관리합니다. 차량의 정확한 공식 문서가 바뀌면 기존 상태를 재사용하지 않고 `pending`으로 초기화하며, `ready` 전에는 답변을 막고 ‘취급설명서를 확인 중입니다’ 상태를 표시합니다.
-- 현재 구현은 SQLite 상태 레코드와 조회·재시도 API까지입니다. 실제 문서 다운로드·텍스트 추출·인덱스 작업자는 별도 단계로 연결하며, GitHub Pages와 브라우저 저장소에는 제조사 PDF를 보관하지 않습니다.
+- 현재 구현은 서버 관리자가 manifest로 승인한 로컬 PDF/TXT의 경로·공식 출처 도메인을 검증한 뒤 텍스트 추출·청크·해시·페이지 정보를 SQLite에 저장하고 `ready`로 전환합니다. 제조사 사이트 자동 다운로드와 생성형 LLM 답변은 별도 단계이며, GitHub Pages와 브라우저 저장소에는 제조사 PDF를 보관하지 않습니다.
+- PDF 텍스트 추출 경계에는 잠금 파일 기준 `pypdf 6.16.2`(BSD-3-Clause)만 사용합니다. 이 라이브러리는 다운로드나 이용 허가 판단을 담당하지 않으며, 원문 확보와 이용 조건 확인은 서버 운영자의 책임으로 분리합니다.
+- 매뉴얼 검색은 활성 차량의 `document_key`에 속한 청크만 대상으로 하고 문서명·페이지·원문 URL·발췌문을 반환합니다. 검색 결과가 없을 때는 다른 연식 문서로 넓히지 않습니다.
 - 여러 장으로 나뉜 쉐보레·KGM 문서는 제조사별 어댑터에서 하나의 논리 매뉴얼로 묶되, 원문 URL과 장 제목을 각 청크에 보존합니다.
 - EV 결과에는 입력값, 계산식, 외부 데이터 시각을 표시합니다.
 - 중고차 결과는 사고 확정이 아닌 가능성·신뢰도·확인 항목으로 표현합니다.

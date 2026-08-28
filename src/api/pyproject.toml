@@ -5,6 +5,7 @@ description = "Vehicle-aware automotive AI copilot backend API"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi[standard-no-fastapi-cloud-cli]>=0.116,<1.0",
+  "pypdf>=5,<7",
 ]
 
 [project.optional-dependencies]

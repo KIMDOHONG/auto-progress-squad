@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { BookIcon } from "../../components/Icons";
 import { BMW_DRIVER_GUIDE, getManualBrand, getVehicleManual, MANUAL_BRANDS } from "../../lib/manual";
-import { getApiManualIngestion, retryApiManualIngestion } from "../../lib/vehicleApi";
+import { getApiManualIngestion, retryApiManualIngestion, searchApiManual } from "../../lib/vehicleApi";
 import { getVehicleTitle } from "../../lib/vehicle";
 import type { VehicleSyncStatus } from "../../hooks/useVehicleProfiles";
-import type { ManualIngestionStatus, VehicleProfile } from "../../types";
+import type { ManualIngestionStatus, ManualSearchResult, VehicleProfile } from "../../types";
 
 interface ManualHubProps {
   vehicle: VehicleProfile;
@@ -45,9 +45,16 @@ export function ManualHub({ vehicle, syncStatus }: ManualHubProps) {
   const requiresVin = vehicle.manufacturer.trim().toLocaleUpperCase("ko-KR") === "BMW";
   const [ingestion, setIngestion] = useState<ManualIngestionStatus>(() => localIngestionStatus(vehicle));
   const [retrying, setRetrying] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchResult, setSearchResult] = useState<ManualSearchResult | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    setQuestion("");
+    setSearchResult(null);
+    setSearchError(null);
     if (!manual || syncStatus.mode !== "api" || !syncStatus.apiBaseUrl) {
       setIngestion(localIngestionStatus(vehicle));
       return;
@@ -81,6 +88,22 @@ export function ManualHub({ vehicle, syncStatus }: ManualHubProps) {
       }));
     } finally {
       setRetrying(false);
+    }
+  };
+
+  const submitManualSearch = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedQuestion = question.trim();
+    if (!syncStatus.apiBaseUrl || normalizedQuestion.length < 2 || !ingestion.canSearch) return;
+    setSearching(true);
+    setSearchError(null);
+    try {
+      setSearchResult(await searchApiManual(syncStatus.apiBaseUrl, vehicle.id, normalizedQuestion));
+    } catch (error) {
+      setSearchResult(null);
+      setSearchError(error instanceof Error ? error.message : "매뉴얼을 검색하지 못했습니다.");
+    } finally {
+      setSearching(false);
     }
   };
 
@@ -168,6 +191,53 @@ export function ManualHub({ vehicle, syncStatus }: ManualHubProps) {
           ) : null}
         </aside>
       </div>
+
+      {ingestion.canSearch && syncStatus.apiBaseUrl ? (
+        <section className="manual-search-panel" aria-labelledby="manual-search-title">
+          <div className="manual-section-heading">
+            <div>
+              <p className="section-caption">차량별 공식 문서 검색</p>
+              <h2 id="manual-search-title">취급설명서 질문</h2>
+            </div>
+            <span>현재 차량 문서만 검색</span>
+          </div>
+          <form className="manual-search-form" onSubmit={(event) => void submitManualSearch(event)}>
+            <label htmlFor="manual-search-question">설명서에서 찾을 내용</label>
+            <div>
+              <input
+                id="manual-search-question"
+                value={question}
+                minLength={2}
+                maxLength={500}
+                placeholder="예: 타이어 공기압은 어디서 확인해?"
+                onChange={(event) => setQuestion(event.target.value)}
+              />
+              <button className="primary-button" type="submit" disabled={searching || question.trim().length < 2}>
+                {searching ? "검색 중" : "설명서 검색"}
+              </button>
+            </div>
+          </form>
+          {searchError ? <p className="manual-search-error" role="alert">{searchError}</p> : null}
+          {searchResult ? (
+            <div className="manual-search-result" aria-live="polite">
+              <strong>{searchResult.answer}</strong>
+              {searchResult.sources.length > 0 ? (
+                <ol>
+                  {searchResult.sources.map((source, index) => (
+                    <li key={`${source.sourceUrl}-${source.page ?? "none"}-${index}`}>
+                      <div>
+                        <a href={source.sourceUrl} {...EXTERNAL_LINK_PROPS}>{source.documentName}</a>
+                        <span>{source.page ? `${source.page}쪽` : "페이지 정보 없음"}{source.section ? ` · ${source.section}` : ""}</span>
+                      </div>
+                      <p>{source.excerpt}</p>
+                    </li>
+                  ))}
+                </ol>
+              ) : <p>검색어를 바꾸거나 제조사 원문에서 직접 확인해 주세요.</p>}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <div className="manual-embed-note">
         <strong>공식 페이지를 내부에 띄우지 않는 이유</strong>

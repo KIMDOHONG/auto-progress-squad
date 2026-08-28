@@ -132,6 +132,7 @@ class ManualSearchRequest(BaseModel):
 
 class ManualSource(BaseModel):
     document_name: str
+    source_url: str
     page: int | None = None
     section: str | None = None
     excerpt: str

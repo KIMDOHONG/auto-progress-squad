@@ -29,6 +29,20 @@ export interface ManualIngestionStatus {
   canSearch: boolean;
 }
 
+export interface ManualSearchSource {
+  documentName: string;
+  sourceUrl: string;
+  page?: number;
+  section?: string;
+  excerpt: string;
+}
+
+export interface ManualSearchResult {
+  answer: string;
+  sources: ManualSearchSource[];
+  generatedAt: string;
+}
+
 export interface VehicleProfile {
   id: string;
   nickname: string;
