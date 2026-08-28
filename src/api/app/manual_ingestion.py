@@ -16,6 +16,7 @@ from .database import (
     list_manual_chunk_rows,
     list_pending_manual_ingestion_rows,
     replace_manual_document,
+    reuse_manual_document,
 )
 
 
@@ -212,13 +213,28 @@ def ingest_vehicle_manual(
                 "manifest_entry_missing", "현재 차량의 문서 키가 manifest에 없습니다."
             )
         source_file = _resolve_source_file(source_root, entry.file)
-        chunks, page_count = _extract_chunks(source_file)
         try:
             content_sha256 = hashlib.sha256(source_file.read_bytes()).hexdigest()
         except OSError as error:
             raise ManualIngestionError(
                 "manual_file_read_failed", "매뉴얼 파일을 다시 읽을 수 없습니다."
             ) from error
+        reused_chunk_count = reuse_manual_document(
+            database_path,
+            vehicle_id=vehicle_id,
+            document_key=document_key,
+            document_name=entry.document_name,
+            source_url=entry.source_url,
+            content_sha256=content_sha256,
+        )
+        if reused_chunk_count is not None:
+            return ManualIngestionResult(
+                vehicle_id=vehicle_id,
+                document_key=document_key,
+                status="ready",
+                chunk_count=reused_chunk_count,
+            )
+        chunks, page_count = _extract_chunks(source_file)
         replace_manual_document(
             database_path,
             vehicle_id=vehicle_id,

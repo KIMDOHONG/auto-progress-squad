@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
+from app import manual_ingestion
 from app.manual_ingestion import run_pending_ingestion
-from tests.test_api import verified_manual_payload
+from tests.test_api import vehicle_payload, verified_manual_payload
 
 
 def write_manifest(
@@ -166,6 +168,125 @@ def test_same_verified_document_is_indexed_once_for_multiple_vehicles(
         )
         assert search.status_code == 200
         assert search.json()["sources"]
+
+
+def test_identical_document_hash_reuses_existing_chunks_without_extraction(
+    client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    assert client.post(
+        "/api/v1/vehicles", json=verified_manual_payload("first-ioniq5")
+    ).status_code == 201
+    source_root = tmp_path / "manuals"
+    write_manifest(source_root)
+    assert run_pending_ingestion(
+        client.app.state.settings.database_path, source_root
+    )[0].status == "ready"
+
+    assert client.post(
+        "/api/v1/vehicles", json=verified_manual_payload("second-ioniq5")
+    ).status_code == 201
+
+    def fail_if_extracted(_source_file: Path):
+        raise AssertionError("동일 해시 문서를 다시 추출했습니다.")
+
+    monkeypatch.setattr(manual_ingestion, "_extract_chunks", fail_if_extracted)
+    result = run_pending_ingestion(
+        client.app.state.settings.database_path, source_root
+    )[0]
+
+    assert result.status == "ready"
+    assert result.chunk_count == 1
+    assert client.get(
+        "/api/v1/vehicles/second-ioniq5/manual-ingestion"
+    ).json()["can_search"] is True
+
+
+def test_changed_document_hash_atomically_replaces_shared_search_content(
+    client: TestClient, tmp_path: Path
+) -> None:
+    assert client.post(
+        "/api/v1/vehicles", json=verified_manual_payload("first-ioniq5")
+    ).status_code == 201
+    source_root = tmp_path / "manuals"
+    write_manifest(source_root)
+    database_path = client.app.state.settings.database_path
+    run_pending_ingestion(database_path, source_root)
+
+    with sqlite3.connect(database_path) as connection:
+        previous_hash = connection.execute(
+            "SELECT content_sha256 FROM manual_documents WHERE document_key = ?",
+            ("hmc:NE1:2024",),
+        ).fetchone()[0]
+
+    assert client.post(
+        "/api/v1/vehicles", json=verified_manual_payload("second-ioniq5")
+    ).status_code == 201
+    (source_root / "hmc_ne1_2024.txt").write_text(
+        "비상 견인 고리는 트렁크 공구함에서 확인하십시오.", encoding="utf-8"
+    )
+    result = run_pending_ingestion(database_path, source_root)[0]
+
+    assert result.status == "ready"
+    for vehicle_id in ("first-ioniq5", "second-ioniq5"):
+        search = client.post(
+            "/api/v1/manual/search",
+            json={"vehicle_id": vehicle_id, "question": "비상 견인 고리"},
+        )
+        assert search.status_code == 200
+        assert "트렁크 공구함" in search.json()["sources"][0]["excerpt"]
+        old_search = client.post(
+            "/api/v1/manual/search",
+            json={"vehicle_id": vehicle_id, "question": "타이어 공기압"},
+        )
+        assert old_search.json()["sources"] == []
+    with sqlite3.connect(database_path) as connection:
+        current_hash = connection.execute(
+            "SELECT content_sha256 FROM manual_documents WHERE document_key = ?",
+            ("hmc:NE1:2024",),
+        ).fetchone()[0]
+        assert current_hash != previous_hash
+        assert connection.execute(
+            "SELECT COUNT(*) FROM manual_chunks WHERE document_key = ?",
+            ("hmc:NE1:2024",),
+        ).fetchone()[0] == 1
+
+
+def test_shared_document_is_deleted_only_after_last_vehicle_reference(
+    client: TestClient, tmp_path: Path
+) -> None:
+    for vehicle_id in ("first-ioniq5", "second-ioniq5"):
+        assert client.post(
+            "/api/v1/vehicles", json=verified_manual_payload(vehicle_id)
+        ).status_code == 201
+    assert client.post(
+        "/api/v1/vehicles", json=vehicle_payload("remaining-unverified")
+    ).status_code == 201
+    source_root = tmp_path / "manuals"
+    write_manifest(source_root)
+    database_path = client.app.state.settings.database_path
+    run_pending_ingestion(database_path, source_root)
+
+    assert client.delete("/api/v1/vehicles/first-ioniq5").status_code == 204
+    with sqlite3.connect(database_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM manual_documents WHERE document_key = ?",
+            ("hmc:NE1:2024",),
+        ).fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT COUNT(*) FROM manual_chunks WHERE document_key = ?",
+            ("hmc:NE1:2024",),
+        ).fetchone()[0] == 1
+
+    assert client.delete("/api/v1/vehicles/second-ioniq5").status_code == 204
+    with sqlite3.connect(database_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM manual_documents WHERE document_key = ?",
+            ("hmc:NE1:2024",),
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM manual_chunks WHERE document_key = ?",
+            ("hmc:NE1:2024",),
+        ).fetchone()[0] == 0
 
 
 def test_textless_pdf_fails_instead_of_marking_document_ready(
