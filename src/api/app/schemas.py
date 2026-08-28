@@ -9,6 +9,7 @@ Powertrain = Literal["electric", "hydrogen", "gasoline", "diesel", "hybrid"]
 FuelGrade = Literal["regular", "premium", "super-premium", "diesel", "high-cetane"]
 ManualSiteId = Literal["hmc", "kia", "genesis"]
 ManualIngestionState = Literal["unavailable", "pending", "ready", "failed"]
+ManufacturerAdapterId = Literal["bmw", "chevrolet", "kgm"]
 
 
 class ApiErrorDetail(BaseModel):
@@ -142,6 +143,22 @@ class ManualSearchResponse(BaseModel):
     answer: str
     sources: list[ManualSource]
     generated_at: str
+
+
+class ManualAdapterCapabilityResponse(BaseModel):
+    id: ManufacturerAdapterId
+    manufacturer: str
+    official_url: str
+    identification_mode: Literal["vin", "model-year-generation"]
+    integration_mode: Literal["server-only", "official-link"]
+    lookup_status: Literal["permission-required", "planned"]
+    stores_raw_identifier: bool
+    image_policy: Literal["none", "ephemeral-only"]
+    failure_code: str
+
+
+class ManualAdapterListResponse(BaseModel):
+    items: list[ManualAdapterCapabilityResponse]
 
 
 class RecallItem(BaseModel):
