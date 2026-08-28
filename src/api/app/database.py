@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class VehicleLimitReachedError(Exception):
@@ -156,6 +156,27 @@ def initialize_database(database_path: Path) -> None:
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 ready_at TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS manual_documents (
+                document_key TEXT PRIMARY KEY,
+                document_name TEXT NOT NULL,
+                source_url TEXT NOT NULL,
+                content_sha256 TEXT NOT NULL,
+                page_count INTEGER NOT NULL,
+                ingested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS manual_chunks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_key TEXT NOT NULL
+                    REFERENCES manual_documents(document_key) ON DELETE CASCADE,
+                page INTEGER,
+                section TEXT,
+                content TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_manual_chunks_document_key
+            ON manual_chunks(document_key);
             """
         )
         connection.execute(
@@ -409,3 +430,147 @@ def retry_manual_ingestion(database_path: Path, vehicle_id: str) -> sqlite3.Row:
     if row is None:  # pragma: no cover - guarded by the update above
         raise ValueError("verified_manual_required")
     return row
+
+
+def replace_manual_document(
+    database_path: Path,
+    *,
+    vehicle_id: str,
+    document_key: str,
+    document_name: str,
+    source_url: str,
+    content_sha256: str,
+    page_count: int,
+    chunks: list[dict[str, object]],
+) -> sqlite3.Row:
+    with connect(database_path) as connection:
+        job = connection.execute(
+            """
+            SELECT document_key FROM manual_ingestion_jobs
+            WHERE vehicle_id = ?
+            """,
+            (vehicle_id,),
+        ).fetchone()
+        if job is None:
+            raise ValueError("verified_manual_required")
+        if job["document_key"] != document_key:
+            raise ValueError("manual_document_mismatch")
+        connection.execute(
+            """
+            INSERT INTO manual_documents (
+                document_key, document_name, source_url, content_sha256,
+                page_count, ingested_at
+            ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(document_key) DO UPDATE SET
+                document_name = excluded.document_name,
+                source_url = excluded.source_url,
+                content_sha256 = excluded.content_sha256,
+                page_count = excluded.page_count,
+                ingested_at = CURRENT_TIMESTAMP
+            """,
+            (
+                document_key,
+                document_name,
+                source_url,
+                content_sha256,
+                page_count,
+            ),
+        )
+        connection.execute(
+            "DELETE FROM manual_chunks WHERE document_key = ?", (document_key,)
+        )
+        connection.executemany(
+            """
+            INSERT INTO manual_chunks (document_key, page, section, content)
+            VALUES (:document_key, :page, :section, :content)
+            """,
+            ({**chunk, "document_key": document_key} for chunk in chunks),
+        )
+        connection.execute(
+            """
+            UPDATE manual_ingestion_jobs
+            SET status = 'ready', failure_code = NULL, failure_message = NULL,
+                updated_at = CURRENT_TIMESTAMP, ready_at = CURRENT_TIMESTAMP
+            WHERE document_key = ?
+            """,
+            (document_key,),
+        )
+        connection.commit()
+    row = get_manual_ingestion_row(database_path, vehicle_id)
+    if row is None:  # pragma: no cover - guarded by the transaction above
+        raise ValueError("verified_manual_required")
+    return row
+
+
+def fail_manual_ingestion(
+    database_path: Path,
+    *,
+    vehicle_id: str,
+    failure_code: str,
+    failure_message: str,
+) -> sqlite3.Row:
+    with connect(database_path) as connection:
+        cursor = connection.execute(
+            """
+            UPDATE manual_ingestion_jobs
+            SET status = 'failed', attempt_count = attempt_count + 1,
+                failure_code = ?, failure_message = ?,
+                updated_at = CURRENT_TIMESTAMP, ready_at = NULL
+            WHERE vehicle_id = ?
+            """,
+            (failure_code, failure_message, vehicle_id),
+        )
+        if cursor.rowcount == 0:
+            raise ValueError("verified_manual_required")
+        connection.commit()
+    row = get_manual_ingestion_row(database_path, vehicle_id)
+    if row is None:  # pragma: no cover - guarded by the update above
+        raise ValueError("verified_manual_required")
+    return row
+
+
+def list_pending_manual_ingestion_rows(
+    database_path: Path, vehicle_id: str | None = None
+) -> list[sqlite3.Row]:
+    query = """
+        SELECT vehicle_id, document_key, source_url, status, attempt_count,
+               failure_code, failure_message, queued_at, updated_at, ready_at
+        FROM manual_ingestion_jobs
+        WHERE status = 'pending'
+    """
+    parameters: tuple[object, ...] = ()
+    if vehicle_id is not None:
+        query += " AND vehicle_id = ?"
+        parameters = (vehicle_id,)
+    query += " ORDER BY queued_at, vehicle_id"
+    with connect(database_path) as connection:
+        return connection.execute(query, parameters).fetchall()
+
+
+def list_manual_chunk_rows(
+    database_path: Path, document_key: str
+) -> list[sqlite3.Row]:
+    with connect(database_path) as connection:
+        return connection.execute(
+            """
+            SELECT d.document_name, d.source_url, c.page, c.section, c.content
+            FROM manual_chunks AS c
+            JOIN manual_documents AS d USING (document_key)
+            WHERE c.document_key = ?
+            ORDER BY c.page, c.id
+            """,
+            (document_key,),
+        ).fetchall()
+
+
+def manual_document_is_indexed(database_path: Path, document_key: str) -> bool:
+    with connect(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT EXISTS(
+                SELECT 1 FROM manual_chunks WHERE document_key = ? LIMIT 1
+            )
+            """,
+            (document_key,),
+        ).fetchone()
+    return bool(row[0])

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request, Response, status
 
@@ -14,10 +15,12 @@ from .database import (
     delete_vehicle,
     get_manual_ingestion_row,
     list_vehicle_rows,
+    manual_document_is_indexed,
     retry_manual_ingestion,
     update_vehicle,
 )
 from .errors import ApiError, ServiceNotConfiguredError
+from .manual_ingestion import search_manual_document
 from .schemas import (
     ApiErrorResponse,
     HealthResponse,
@@ -240,9 +243,29 @@ def search_manual(request: Request, payload: ManualSearchRequest) -> ManualSearc
             "취급설명서 준비에 실패했습니다. 재시도 후 상태를 확인해 주세요.",
             retryable=True,
         )
-    raise ServiceNotConfiguredError(
-        code="manual_rag_not_configured",
-        message="차량 매뉴얼 RAG 데이터가 아직 연결되지 않았습니다.",
+    document_key = str(ingestion["document_key"])
+    if not manual_document_is_indexed(
+        request.app.state.settings.database_path, document_key
+    ):
+        raise ServiceNotConfiguredError(
+            code="manual_index_not_ready",
+            message="취급설명서 상태와 검색 인덱스가 일치하지 않습니다. 문서를 다시 준비해 주세요.",
+        )
+    sources = search_manual_document(
+        request.app.state.settings.database_path,
+        document_key,
+        payload.question,
+        payload.limit,
+    )
+    answer = (
+        "공식 취급설명서에서 관련 내용을 찾았습니다. 아래 출처의 원문을 확인해 주세요."
+        if sources
+        else "현재 질문과 일치하는 내용을 이 차량의 공식 취급설명서에서 찾지 못했습니다."
+    )
+    return ManualSearchResponse(
+        answer=answer,
+        sources=sources,
+        generated_at=datetime.now(UTC).isoformat(),
     )
 
 

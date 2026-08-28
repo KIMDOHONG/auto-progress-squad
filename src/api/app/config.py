@@ -17,6 +17,7 @@ DEFAULT_CORS_ORIGINS = (
 class Settings:
     database_path: Path
     cors_origins: tuple[str, ...]
+    manual_source_dir: Path = PROJECT_DIR / "data" / "manuals"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -29,4 +30,11 @@ class Settings:
         database_path = Path(
             os.getenv("APS_DATABASE_PATH", PROJECT_DIR / "data" / "auto_progress.db")
         )
-        return cls(database_path=database_path, cors_origins=cors_origins)
+        manual_source_dir = Path(
+            os.getenv("APS_MANUAL_SOURCE_DIR", PROJECT_DIR / "data" / "manuals")
+        )
+        return cls(
+            database_path=database_path,
+            cors_origins=cors_origins,
+            manual_source_dir=manual_source_dir,
+        )

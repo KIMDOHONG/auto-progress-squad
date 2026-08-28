@@ -1,6 +1,6 @@
 # Backend API
 
-FastAPI와 SQLite 기반 백엔드 기반입니다. 현재 단계에서는 차량 프로필 저장 구조와 매뉴얼·리콜 API 계약을 제공하며 실제 RAG와 외부 리콜 데이터는 연결하지 않습니다.
+FastAPI와 SQLite 기반 백엔드입니다. 차량 프로필, 승인된 로컬 매뉴얼의 추출·청크 저장·출처 검색과 리콜 API 계약을 제공합니다. 생성형 LLM 답변과 외부 리콜 데이터는 아직 연결하지 않습니다.
 
 ## 실행
 
@@ -24,6 +24,7 @@ uv run pytest
 | --- | --- | --- |
 | `APS_DATABASE_PATH` | `src/api/data/auto_progress.db` | SQLite 파일 경로 |
 | `APS_CORS_ORIGINS` | 로컬 Vite 주소와 GitHub Pages origin | 쉼표로 구분한 허용 origin |
+| `APS_MANUAL_SOURCE_DIR` | `src/api/data/manuals` | 승인된 PDF/TXT와 `manifest.json` 디렉터리 |
 
 ## 현재 API
 
@@ -35,7 +36,15 @@ uv run pytest
 | `PUT /api/v1/vehicles/{vehicle_id}` | 차량 정보 수정 |
 | `PUT /api/v1/vehicles/{vehicle_id}/active` | 활성 차량 전환 |
 | `DELETE /api/v1/vehicles/{vehicle_id}` | 차량 삭제, 마지막 1대 보호 |
-| `POST /api/v1/manual/search` | 계약만 제공, 현재 `503` |
+| `GET /api/v1/vehicles/{vehicle_id}/manual-ingestion` | 차량별 문서 준비 상태 |
+| `POST /api/v1/vehicles/{vehicle_id}/manual-ingestion/retry` | 실패 작업을 `pending`으로 재설정 |
+| `POST /api/v1/manual/search` | `ready` 차량 문서의 출처 검색 |
 | `GET /api/v1/vehicles/{vehicle_id}/recalls` | 계약만 제공, 현재 `503` |
 
-`503`은 오류가 아니라 성공인 것처럼 보이지 않도록 의도적으로 실패 폐쇄한 상태입니다.
+매뉴얼 작업자는 `uv run python -m app.manual_worker`로 실행합니다. manifest에 승인된 공식 HTTPS 출처와 서버 디렉터리 내부 파일만 처리하며, 제조사 PDF를 저장소에 커밋하거나 브라우저로 복제하지 않습니다. 리콜 API의 `503`은 미연동 상태를 성공인 것처럼 보이지 않도록 의도적으로 실패 폐쇄한 상태입니다.
+
+## 외부 라이브러리와 데이터 경계
+
+- 잠금 파일 기준 `pypdf 6.16.2`(BSD-3-Clause)는 서버에서 승인된 PDF의 텍스트를 추출할 때만 사용합니다. 문서 다운로드, 이용 허가 판단, 답변 생성은 수행하지 않습니다.
+- PDF/TXT 파일과 공식 원문 URL은 서버 관리자가 manifest로 제공해야 합니다. 작업자는 허용된 공식 도메인과 `APS_MANUAL_SOURCE_DIR` 내부 경로만 처리합니다.
+- 제조사 문서는 소스 저장소나 GitHub Pages에 포함하지 않으며, 실제 운영 전에는 각 제조사의 이용 조건과 재사용 범위를 별도로 확인해야 합니다.

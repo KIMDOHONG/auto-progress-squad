@@ -25,8 +25,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="자동진행단 자동차 AI 코파일럿 API",
         version="0.1.0",
         description=(
-            "차량 프로필, 매뉴얼 검색과 리콜 조회를 위한 백엔드 계약입니다. "
-            "현재 RAG와 외부 리콜 데이터는 아직 연결되지 않았습니다."
+            "차량 프로필, 승인된 매뉴얼의 출처 검색과 리콜 조회를 위한 백엔드입니다. "
+            "LLM 답변 생성과 외부 리콜 데이터는 아직 연결되지 않았습니다."
         ),
         lifespan=lifespan,
     )

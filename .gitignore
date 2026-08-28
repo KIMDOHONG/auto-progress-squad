@@ -50,3 +50,4 @@ logs/
 *.pth
 *.ckpt
 *.zip
+src/api/data/manuals/

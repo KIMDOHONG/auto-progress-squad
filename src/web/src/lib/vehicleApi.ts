@@ -1,4 +1,4 @@
-import type { ManualIngestionStatus, OfficialManualSiteId, VehicleProfile } from "../types";
+import type { ManualIngestionStatus, ManualSearchResult, OfficialManualSiteId, VehicleProfile } from "../types";
 
 interface ApiVehicleProfile {
   id: string;
@@ -39,6 +39,18 @@ interface ApiManualIngestionStatus {
   updated_at: string | null;
   ready_at: string | null;
   can_search: boolean;
+}
+
+interface ApiManualSearchResult {
+  answer: string;
+  sources: Array<{
+    document_name: string;
+    source_url: string;
+    page: number | null;
+    section: string | null;
+    excerpt: string;
+  }>;
+  generated_at: string;
 }
 
 export class VehicleApiError extends Error {
@@ -185,4 +197,26 @@ export async function retryApiManualIngestion(baseUrl: string, vehicleId: string
     { method: "POST" },
   );
   return ingestionFromApi(response);
+}
+
+export async function searchApiManual(
+  baseUrl: string,
+  vehicleId: string,
+  question: string,
+): Promise<ManualSearchResult> {
+  const response = await request<ApiManualSearchResult>(baseUrl, "/api/v1/manual/search", {
+    method: "POST",
+    body: JSON.stringify({ vehicle_id: vehicleId, question, limit: 5 }),
+  });
+  return {
+    answer: response.answer,
+    generatedAt: response.generated_at,
+    sources: response.sources.map((source) => ({
+      documentName: source.document_name,
+      sourceUrl: source.source_url,
+      excerpt: source.excerpt,
+      ...(source.page ? { page: source.page } : {}),
+      ...(source.section ? { section: source.section } : {}),
+    })),
+  };
 }
