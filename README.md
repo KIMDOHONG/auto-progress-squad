@@ -142,13 +142,17 @@ uv run fastapi dev
 
 ## 다음 진행 순서
 
-1. **RAG 문서 수집 작업자 구현**: 제조사별 이용 조건을 확인한 뒤 공식 문서 다운로드·장별 문서 정규화와 실패 기록 구현
+1. **RAG 문서 수집 작업자 구현**: [Issue #18](https://github.com/KIMDOHONG/auto-progress-squad/issues/18)에 따라 제조사별 이용 조건을 확인한 뒤 공식 문서 다운로드·장별 문서 정규화와 실패 기록 구현
 2. **검색 인덱스 구성**: 텍스트 추출·청크·문서 해시·출처와 페이지 메타데이터를 저장하고 완료 작업만 `ready`로 전환
 3. **매뉴얼 질의응답 연결**: 검색된 문서의 위치와 출처를 함께 보여주는 답변 구현
-4. **제조사 어댑터·리콜 API 연결**: BMW·쉐보레·KGM 매뉴얼 식별과 활성 차량 기준 리콜 조회 구현
+4. **제조사 어댑터·리콜 API 연결**: [Issue #17](https://github.com/KIMDOHONG/auto-progress-squad/issues/17)의 BMW·쉐보레·KGM 매뉴얼 식별과 [Issue #19](https://github.com/KIMDOHONG/auto-progress-squad/issues/19)의 활성 차량 기준 리콜 조회 구현
 5. **외부 경로 API 연결**: EV·수소·내연기관별 충전소/주유소와 경로 계산을 실제 데이터로 교체
 
-자연어에서 별명을 분리하는 기능, BMW·쉐보레·KGM 등 제조사별 매뉴얼 어댑터, 리콜과 RAG 구현은 각각 GitHub Issue로 분리해 순차 진행합니다.
+후속 개선사항은 구현 범위가 섞이지 않도록 다음 GitHub Issue에서 관리합니다.
+
+- [Issue #17](https://github.com/KIMDOHONG/auto-progress-squad/issues/17): BMW·쉐보레·KGM 공식 매뉴얼 어댑터, BMW 차량명·연식 동적 표시와 공식 이미지 대체 규칙
+- [Issue #20](https://github.com/KIMDOHONG/auto-progress-squad/issues/20): 코파일럿 차량 등록 문장에서 프로필 별명 분리
+- [Issue #22](https://github.com/KIMDOHONG/auto-progress-squad/issues/22): 모바일 코파일럿 플로팅 버튼·부분 화면 채팅 패널·최신 메시지 자동 스크롤·하단 메뉴 균등 배치·채팅 버블과 차량 이미지 폭 개선
 
 ## 이번 범위에서 제외
 
