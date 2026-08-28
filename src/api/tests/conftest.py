@@ -12,6 +12,7 @@ def client(tmp_path: Path) -> TestClient:
     settings = Settings(
         database_path=tmp_path / "test.db",
         cors_origins=("https://kimdohong.github.io",),
+        manual_source_dir=tmp_path / "manuals",
     )
     with TestClient(create_app(settings)) as test_client:
         yield test_client

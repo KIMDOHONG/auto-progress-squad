@@ -141,7 +141,13 @@ def test_openapi_exposes_planned_contracts(client: TestClient) -> None:
     assert "/api/v1/vehicles/{vehicle_id}/manual-ingestion/retry" in paths
     assert "/api/v1/manual/search" in paths
     assert "/api/v1/manual-adapters" in paths
+    assert "/api/v1/manual-adapters/{adapter_id}/resolve" in paths
     assert "/api/v1/vehicles/{vehicle_id}/recalls" in paths
+
+    resolve_responses = paths[
+        "/api/v1/manual-adapters/{adapter_id}/resolve"
+    ]["post"]["responses"]
+    assert {"404", "409", "503"}.issubset(resolve_responses)
 
 
 def test_vehicle_crud_and_active_selection(client: TestClient) -> None:

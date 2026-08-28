@@ -39,6 +39,8 @@ uv run pytest
 | `GET /api/v1/vehicles/{vehicle_id}/manual-ingestion` | 차량별 문서 준비 상태 |
 | `POST /api/v1/vehicles/{vehicle_id}/manual-ingestion/retry` | 실패 작업을 `pending`으로 재설정 |
 | `POST /api/v1/manual/search` | `ready` 차량 문서의 출처 검색 |
+| `GET /api/v1/manual-adapters` | 제조사별 식별·연동·저장 정책 조회 |
+| `POST /api/v1/manual-adapters/{adapter_id}/resolve` | 승인된 쉐보레·KGM 모델·연식·세대 매핑 조회 |
 | `GET /api/v1/vehicles/{vehicle_id}/recalls` | 계약만 제공, 현재 `503` |
 
 매뉴얼 작업자는 `uv run python -m app.manual_worker`로 실행합니다. manifest에 승인된 공식 HTTPS 출처와 서버 디렉터리 내부 파일만 처리하며, 제조사 PDF를 저장소에 커밋하거나 브라우저로 복제하지 않습니다. 리콜 API의 `503`은 미연동 상태를 성공인 것처럼 보이지 않도록 의도적으로 실패 폐쇄한 상태입니다.
@@ -47,4 +49,5 @@ uv run pytest
 
 - 잠금 파일 기준 `pypdf 6.16.2`(BSD-3-Clause)는 서버에서 승인된 PDF의 텍스트를 추출할 때만 사용합니다. 문서 다운로드, 이용 허가 판단, 답변 생성은 수행하지 않습니다.
 - PDF/TXT 파일과 공식 원문 URL은 서버 관리자가 manifest로 제공해야 합니다. 작업자는 허용된 공식 도메인과 `APS_MANUAL_SOURCE_DIR` 내부 경로만 처리합니다.
+- 쉐보레·KGM 매핑은 같은 디렉터리의 `adapter-manifest.json`에 별도로 둡니다. 항목에는 `manufacturer_id`, `model`, `model_year`, `generation`, `manual_title`, `official_url`, `source_checked_at`와 `chapters`의 `title`·`url`이 필요합니다. 제조사 API 응답이나 PDF를 저장소에 커밋하지 말고, 이용 조건과 정확한 차량 대응을 검토한 링크만 운영 서버에 배치합니다.
 - 제조사 문서는 소스 저장소나 GitHub Pages에 포함하지 않으며, 실제 운영 전에는 각 제조사의 이용 조건과 재사용 범위를 별도로 확인해야 합니다.

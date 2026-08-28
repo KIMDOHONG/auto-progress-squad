@@ -7,7 +7,7 @@ from typing import Literal, Protocol
 ManufacturerAdapterId = Literal["bmw", "chevrolet", "kgm"]
 IdentificationMode = Literal["vin", "model-year-generation"]
 IntegrationMode = Literal["server-only", "official-link"]
-LookupStatus = Literal["permission-required", "planned"]
+LookupStatus = Literal["permission-required", "manifest-required"]
 ImagePolicy = Literal["none", "ephemeral-only"]
 
 
@@ -136,10 +136,10 @@ _ADAPTERS: dict[ManufacturerAdapterId, ManufacturerManualAdapter] = {
             official_url="https://www.chevrolet.co.kr/owner-manuals",
             identification_mode="model-year-generation",
             integration_mode="official-link",
-            lookup_status="planned",
+            lookup_status="manifest-required",
             stores_raw_identifier=False,
             image_policy="none",
-            failure_code="chevrolet_manual_adapter_not_implemented",
+            failure_code="chevrolet_manual_mapping_required",
         )
     ),
     "kgm": PlannedOfficialLinkAdapter(
@@ -152,10 +152,10 @@ _ADAPTERS: dict[ManufacturerAdapterId, ManufacturerManualAdapter] = {
             ),
             identification_mode="model-year-generation",
             integration_mode="official-link",
-            lookup_status="planned",
+            lookup_status="manifest-required",
             stores_raw_identifier=False,
             image_policy="none",
-            failure_code="kgm_manual_adapter_not_implemented",
+            failure_code="kgm_manual_mapping_required",
         )
     ),
 }

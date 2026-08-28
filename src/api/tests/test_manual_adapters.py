@@ -29,8 +29,8 @@ def test_manual_adapter_capabilities_are_public_and_fail_closed(client) -> None:
         "image_policy": "none",
         "failure_code": "bmw_driver_guide_permission_required",
     }
-    assert items["chevrolet"]["lookup_status"] == "planned"
-    assert items["kgm"]["lookup_status"] == "planned"
+    assert items["chevrolet"]["lookup_status"] == "manifest-required"
+    assert items["kgm"]["lookup_status"] == "manifest-required"
 
 
 def test_bmw_lookup_requires_vin_without_guessing() -> None:
