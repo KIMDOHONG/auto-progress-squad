@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 Powertrain = Literal["electric", "hydrogen", "gasoline", "diesel", "hybrid"]
 FuelGrade = Literal["regular", "premium", "super-premium", "diesel", "high-cetane"]
-ManualSiteId = Literal["hmc", "kia", "genesis"]
+ManualSiteId = Literal["hmc", "kia", "genesis", "chevrolet", "kgm"]
 ManualIngestionState = Literal["unavailable", "pending", "ready", "failed"]
 ManufacturerAdapterId = Literal["bmw", "chevrolet", "kgm"]
 
@@ -42,8 +42,11 @@ class VehicleProfile(BaseModel):
     manual_site_id: ManualSiteId | None = None
     manual_model_name: str | None = None
     manual_project_code: str | None = None
+    manual_generation: str | None = None
     manual_model_year: int | None = None
     manual_image_url: str | None = None
+    manual_title: str | None = None
+    manual_source_url: str | None = None
     manual_verified_at: str | None = None
     is_active: bool
 
@@ -59,8 +62,11 @@ class VehiclePayload(BaseModel):
     manual_site_id: ManualSiteId | None = None
     manual_model_name: str | None = Field(default=None, max_length=120)
     manual_project_code: str | None = Field(default=None, max_length=40)
+    manual_generation: str | None = Field(default=None, max_length=80)
     manual_model_year: int | None = Field(default=None, ge=1990, le=2100)
     manual_image_url: str | None = Field(default=None, max_length=1000)
+    manual_title: str | None = Field(default=None, max_length=200)
+    manual_source_url: str | None = Field(default=None, max_length=1000)
     manual_verified_at: str | None = Field(default=None, max_length=80)
 
     @model_validator(mode="after")
@@ -72,29 +78,66 @@ class VehiclePayload(BaseModel):
         if self.powertrain != "electric" and self.battery_capacity_kwh is not None:
             raise ValueError("수소전기차·내연기관·하이브리드 차량에는 배터리 용량을 설정할 수 없습니다.")
         manual_values = (
-            self.manual_site_id,
             self.manual_model_name,
             self.manual_project_code,
+            self.manual_generation,
             self.manual_model_year,
             self.manual_image_url,
+            self.manual_title,
+            self.manual_source_url,
             self.manual_verified_at,
         )
-        if any(value is not None for value in manual_values) and not all(
-            value is not None for value in manual_values
-        ):
-            raise ValueError("공식 취급설명서 검증 정보는 일부만 저장할 수 없습니다.")
-        if self.manual_site_id is not None:
+        if self.manual_site_id is None:
+            if any(value is not None for value in manual_values):
+                raise ValueError("공식 취급설명서 검증 정보는 일부만 저장할 수 없습니다.")
+            return self
+
+        if self.manual_model_year != self.model_year:
+            raise ValueError("차량 연식과 공식 취급설명서 연식이 일치해야 합니다.")
+
+        if self.manual_site_id in {"hmc", "kia", "genesis"}:
+            required = (
+                self.manual_model_name,
+                self.manual_project_code,
+                self.manual_model_year,
+                self.manual_image_url,
+                self.manual_verified_at,
+            )
+            if not all(value is not None for value in required):
+                raise ValueError("공식 취급설명서 검증 정보는 일부만 저장할 수 없습니다.")
             allowed_image_prefixes = {
                 "hmc": "https://ownersmanual.hyundai.com/",
                 "kia": "https://ownersmanual.kia.com/",
                 "genesis": "https://ownersmanual.genesis.com/",
             }
+            assert self.manual_image_url is not None
             if not self.manual_image_url.startswith(
                 allowed_image_prefixes[self.manual_site_id]
             ):
                 raise ValueError("공식 제조사 도메인의 차량 이미지만 저장할 수 있습니다.")
-            if self.manual_model_year != self.model_year:
-                raise ValueError("차량 연식과 공식 취급설명서 연식이 일치해야 합니다.")
+            return self
+
+        required = (
+            self.manual_model_name,
+            self.manual_generation,
+            self.manual_model_year,
+            self.manual_title,
+            self.manual_source_url,
+            self.manual_verified_at,
+        )
+        if not all(value is not None for value in required):
+            raise ValueError("승인 카탈로그 연결 정보는 일부만 저장할 수 없습니다.")
+        if self.manual_project_code is not None or self.manual_image_url is not None:
+            raise ValueError("쉐보레·KGM 승인 매핑에는 프로젝트 코드나 이미지를 저장하지 않습니다.")
+        allowed_source_prefixes = {
+            "chevrolet": "https://www.chevrolet.co.kr/",
+            "kgm": "https://www.kg-mobility.com/",
+        }
+        assert self.manual_source_url is not None
+        if not self.manual_source_url.startswith(
+            allowed_source_prefixes[self.manual_site_id]
+        ):
+            raise ValueError("공식 제조사 도메인의 매뉴얼 원문만 저장할 수 있습니다.")
         return self
 
 
@@ -164,6 +207,10 @@ class ManualAdapterListResponse(BaseModel):
 class ManualCatalogLookupRequest(BaseModel):
     model: str = Field(min_length=1, max_length=80)
     model_year: int = Field(ge=1990, le=2100)
+    generation: str | None = Field(default=None, min_length=1, max_length=80)
+
+
+class ManualCatalogAttachRequest(BaseModel):
     generation: str | None = Field(default=None, min_length=1, max_length=80)
 
 

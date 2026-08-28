@@ -1,4 +1,4 @@
-import type { ManualIngestionStatus, ManualSearchResult, OfficialManualSiteId, VehicleProfile } from "../types";
+import type { CatalogManualAdapterId, ManualIngestionStatus, ManualSearchResult, OfficialManualSiteId, VehicleProfile } from "../types";
 
 interface ApiVehicleProfile {
   id: string;
@@ -12,8 +12,11 @@ interface ApiVehicleProfile {
   manual_site_id: OfficialManualSiteId | null;
   manual_model_name: string | null;
   manual_project_code: string | null;
+  manual_generation: string | null;
   manual_model_year: number | null;
   manual_image_url: string | null;
+  manual_title: string | null;
+  manual_source_url: string | null;
   manual_verified_at: string | null;
   is_active: boolean;
 }
@@ -62,17 +65,18 @@ export class VehicleApiError extends Error {
 function fromApi(vehicle: ApiVehicleProfile): VehicleProfile {
   const manual = vehicle.manual_site_id
     && vehicle.manual_model_name
-    && vehicle.manual_project_code
     && vehicle.manual_model_year
-    && vehicle.manual_image_url
     && vehicle.manual_verified_at
     ? {
         siteId: vehicle.manual_site_id,
         modelName: vehicle.manual_model_name,
-        projectCode: vehicle.manual_project_code,
         modelYear: vehicle.manual_model_year,
-        imageUrl: vehicle.manual_image_url,
         verifiedAt: vehicle.manual_verified_at,
+        ...(vehicle.manual_project_code ? { projectCode: vehicle.manual_project_code } : {}),
+        ...(vehicle.manual_generation ? { generation: vehicle.manual_generation } : {}),
+        ...(vehicle.manual_image_url ? { imageUrl: vehicle.manual_image_url } : {}),
+        ...(vehicle.manual_title ? { title: vehicle.manual_title } : {}),
+        ...(vehicle.manual_source_url ? { sourceUrl: vehicle.manual_source_url } : {}),
       }
     : undefined;
   return {
@@ -102,8 +106,11 @@ function toApi(vehicle: VehicleProfile) {
     manual_site_id: vehicle.manual?.siteId ?? null,
     manual_model_name: vehicle.manual?.modelName ?? null,
     manual_project_code: vehicle.manual?.projectCode ?? null,
+    manual_generation: vehicle.manual?.generation ?? null,
     manual_model_year: vehicle.manual?.modelYear ?? null,
     manual_image_url: vehicle.manual?.imageUrl ?? null,
+    manual_title: vehicle.manual?.title ?? null,
+    manual_source_url: vehicle.manual?.sourceUrl ?? null,
     manual_verified_at: vehicle.manual?.verifiedAt ?? null,
   };
 }
@@ -180,6 +187,23 @@ export async function deleteApiVehicle(baseUrl: string, vehicleId: string) {
   await request<void>(baseUrl, `/api/v1/vehicles/${encodeURIComponent(vehicleId)}`, {
     method: "DELETE",
   });
+}
+
+export async function attachApiManualAdapter(
+  baseUrl: string,
+  vehicleId: string,
+  adapterId: CatalogManualAdapterId,
+  generation?: string,
+) {
+  const response = await request<ApiVehicleProfile>(
+    baseUrl,
+    `/api/v1/vehicles/${encodeURIComponent(vehicleId)}/manual-adapters/${adapterId}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ generation: generation ?? null }),
+    },
+  );
+  return fromApi(response);
 }
 
 export async function getApiManualIngestion(baseUrl: string, vehicleId: string) {

@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { DEFAULT_VEHICLES } from "../lib/vehicle";
 import {
   activateApiVehicle,
+  attachApiManualAdapter,
   createApiVehicle,
   deleteApiVehicle,
   listApiVehicles,
   updateApiVehicle,
 } from "../lib/vehicleApi";
 import type { VehicleProfile } from "../types";
+import type { CatalogManualAdapterId } from "../types";
 
 const STORAGE_KEY = "auto-squad.vehicle-profiles.v4";
 const LEGACY_V3_STORAGE_KEY = "auto-squad.vehicle-profiles.v3";
@@ -332,6 +334,27 @@ export function useVehicleProfiles() {
     }));
   }, [apiBaseUrl, runApiAction, updateState]);
 
+  const attachManualAdapter = useCallback(async (
+    vehicleId: string,
+    adapterId: CatalogManualAdapterId,
+    generation?: string,
+  ) => {
+    if (syncStatus.mode !== "api") {
+      throw new Error("FastAPI 연결 상태에서만 승인 매뉴얼을 연결할 수 있습니다.");
+    }
+    const vehicle = await attachApiManualAdapter(
+      apiBaseUrl,
+      vehicleId,
+      adapterId,
+      generation,
+    );
+    updateState((current) => ({
+      ...current,
+      vehicles: current.vehicles.map((item) => item.id === vehicle.id ? vehicle : item),
+    }));
+    return vehicle;
+  }, [apiBaseUrl, syncStatus.mode, updateState]);
+
   const replaceVehicle = useCallback(async (vehicleId: string, replacement: VehicleProfile) => {
     const vehicle = { ...replacement, id: vehicleId };
     await runApiAction(async () => {
@@ -355,5 +378,5 @@ export function useVehicleProfiles() {
     });
   }, [apiBaseUrl, runApiAction, updateState]);
 
-  return { vehicles: state.vehicles, activeVehicle, syncStatus, setActiveVehicle, addVehicle, updateVehicle, replaceVehicle, deleteVehicle };
+  return { vehicles: state.vehicles, activeVehicle, syncStatus, setActiveVehicle, addVehicle, updateVehicle, attachManualAdapter, replaceVehicle, deleteVehicle };
 }

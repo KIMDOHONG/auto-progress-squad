@@ -2,14 +2,19 @@ export type Powertrain = "electric" | "hydrogen" | "gasoline" | "diesel" | "hybr
 
 export type FuelGrade = "regular" | "premium" | "super-premium" | "diesel" | "high-cetane";
 
-export type OfficialManualSiteId = "hmc" | "kia" | "genesis";
+export type OfficialManualSiteId = "hmc" | "kia" | "genesis" | "chevrolet" | "kgm";
+
+export type CatalogManualAdapterId = "chevrolet" | "kgm";
 
 export interface OfficialManualMetadata {
   siteId: OfficialManualSiteId;
   modelName: string;
-  projectCode: string;
+  projectCode?: string;
+  generation?: string;
   modelYear: number;
-  imageUrl: string;
+  imageUrl?: string;
+  title?: string;
+  sourceUrl?: string;
   verifiedAt: string;
 }
 

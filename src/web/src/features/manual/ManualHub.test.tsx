@@ -123,4 +123,98 @@ describe("manual ingestion status", () => {
       }),
     ));
   });
+
+  it("offers an explicit approved-catalog link for a KGM API profile", async () => {
+    const vehicle = {
+      id: "kgm-test",
+      nickname: "테스트 차량",
+      manufacturer: "KGM",
+      model: "테스트 SUV",
+      modelYear: 2025,
+      powertrain: "gasoline" as const,
+      fuelGrade: "regular" as const,
+    };
+    const linked = {
+      ...vehicle,
+      manual: {
+        siteId: "kgm" as const,
+        modelName: "테스트 SUV",
+        generation: "T1",
+        modelYear: 2025,
+        title: "테스트 SUV 취급설명서",
+        sourceUrl: "https://www.kg-mobility.com/manual/test",
+        verifiedAt: "2026-08-28",
+      },
+    };
+    const onAttachManualAdapter = vi.fn().mockResolvedValue(linked);
+
+    render(<ManualHub
+      vehicle={vehicle}
+      syncStatus={{
+        mode: "api",
+        label: "SQLite 동기화",
+        detail: "API",
+        apiBaseUrl: "http://127.0.0.1:8000",
+      }}
+      onAttachManualAdapter={onAttachManualAdapter}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: "승인 매뉴얼 연결" }));
+
+    await waitFor(() => expect(onAttachManualAdapter).toHaveBeenCalledWith(
+      "kgm-test",
+      "kgm",
+    ));
+    expect(await screen.findByText(/차량 프로필에 연결했습니다/)).toBeInTheDocument();
+  });
+
+  it("labels a linked catalog manual without a RAG index as unavailable", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        vehicle_id: "kgm-linked",
+        status: "unavailable",
+        document_key: null,
+        source_url: null,
+        attempt_count: 0,
+        failure_code: null,
+        failure_message: null,
+        queued_at: null,
+        updated_at: null,
+        ready_at: null,
+        can_search: false,
+      }),
+    } as Response);
+    render(<ManualHub
+      vehicle={{
+        id: "kgm-linked",
+        nickname: "연결 차량",
+        manufacturer: "KGM",
+        model: "테스트 SUV",
+        modelYear: 2025,
+        powertrain: "gasoline",
+        fuelGrade: "regular",
+        manual: {
+          siteId: "kgm",
+          modelName: "테스트 SUV",
+          generation: "T1",
+          modelYear: 2025,
+          title: "테스트 SUV 취급설명서",
+          sourceUrl: "https://www.kg-mobility.com/manual/test",
+          verifiedAt: "2026-08-28",
+        },
+      }}
+      syncStatus={{
+        mode: "api",
+        label: "SQLite 동기화",
+        detail: "API",
+        apiBaseUrl: "http://127.0.0.1:8000",
+      }}
+    />);
+
+    expect(await screen.findByText("검색 미연결")).toBeInTheDocument();
+    expect(screen.getByText(/장별 PDF 검색 인덱스는 아직 구성되지 않았습니다/)).toBeInTheDocument();
+    expect(screen.queryByText("취급설명서를 확인 중입니다")).not.toBeInTheDocument();
+  });
 });

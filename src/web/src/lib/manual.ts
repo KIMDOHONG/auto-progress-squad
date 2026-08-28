@@ -1,4 +1,4 @@
-import type { OfficialManualSiteId, VehicleProfile } from "../types";
+import type { CatalogManualAdapterId, OfficialManualSiteId, VehicleProfile } from "../types";
 
 export interface ManualBrandSource {
   manufacturer: string;
@@ -12,8 +12,10 @@ export interface VehicleManualSource extends ManualBrandSource {
   model: string;
   modelYear: number;
   projectCode: string;
+  generation?: string;
+  manualTitle?: string;
   manualUrl: string;
-  imageUrl: string;
+  imageUrl?: string;
 }
 
 export const BMW_DRIVER_GUIDE = {
@@ -44,6 +46,20 @@ export const MANUAL_BRANDS: ManualBrandSource[] = [
     baseUrl: "https://ownersmanual.genesis.com",
     homeUrl: "https://ownersmanual.genesis.com/main?langCode=ko_KR&countryCode=A99",
   },
+  {
+    manufacturer: "쉐보레",
+    label: "쉐보레",
+    siteId: "chevrolet",
+    baseUrl: "https://www.chevrolet.co.kr",
+    homeUrl: "https://www.chevrolet.co.kr/owner-manuals",
+  },
+  {
+    manufacturer: "KGM",
+    label: "KGM",
+    siteId: "kgm",
+    baseUrl: "https://www.kg-mobility.com",
+    homeUrl: "https://www.kg-mobility.com/sr/update-download/download-center/instruction-manual",
+  },
 ];
 
 const VEHICLE_MANUALS: VehicleManualSource[] = [
@@ -71,7 +87,22 @@ function normalize(value: string): string {
 
 export function getManualBrand(manufacturer: string): ManualBrandSource | undefined {
   const target = normalize(manufacturer);
-  return MANUAL_BRANDS.find((brand) => normalize(brand.manufacturer) === target);
+  const aliases: Record<string, OfficialManualSiteId> = {
+    CHEVROLET: "chevrolet",
+    "KG모빌리티": "kgm",
+    "KG MOBILITY": "kgm",
+    쌍용: "kgm",
+    쌍용자동차: "kgm",
+  };
+  const siteId = aliases[target];
+  return MANUAL_BRANDS.find((brand) => (
+    normalize(brand.manufacturer) === target || brand.siteId === siteId
+  ));
+}
+
+export function getCatalogManualAdapterId(manufacturer: string): CatalogManualAdapterId | undefined {
+  const siteId = getManualBrand(manufacturer)?.siteId;
+  return siteId === "chevrolet" || siteId === "kgm" ? siteId : undefined;
 }
 
 export function getManualBrandBySiteId(siteId: OfficialManualSiteId): ManualBrandSource | undefined {
@@ -89,7 +120,21 @@ export function getVehicleManual(vehicle: VehicleProfile): VehicleManualSource |
   const metadata = vehicle.manual;
   if (metadata && metadata.modelYear === vehicle.modelYear && normalize(metadata.modelName) === model) {
     const brand = getManualBrandBySiteId(metadata.siteId);
-    if (brand && normalize(brand.manufacturer) === manufacturer) {
+    const vehicleBrand = getManualBrand(vehicle.manufacturer);
+    if (brand && vehicleBrand?.siteId === brand.siteId) {
+      if (metadata.sourceUrl && metadata.generation) {
+        return {
+          ...brand,
+          model: metadata.modelName,
+          modelYear: metadata.modelYear,
+          projectCode: metadata.generation,
+          generation: metadata.generation,
+          manualUrl: metadata.sourceUrl,
+          ...(metadata.title ? { manualTitle: metadata.title } : {}),
+          ...(metadata.imageUrl ? { imageUrl: metadata.imageUrl } : {}),
+        };
+      }
+      if (!metadata.projectCode || !metadata.imageUrl) return undefined;
       return {
         ...brand,
         model: metadata.modelName,

@@ -165,11 +165,12 @@ uv run fastapi dev
 - 준비 완료 문서 검색: `POST /api/v1/manual/search`
 - 제조사 매뉴얼 어댑터 지원 상태: `GET /api/v1/manual-adapters`
 - 승인된 쉐보레·KGM 매뉴얼 매핑 조회: `POST /api/v1/manual-adapters/{adapter_id}/resolve`
+- 승인 매핑을 기존 차량 프로필에 연결: `POST /api/v1/vehicles/{vehicle_id}/manual-adapters/{adapter_id}`
 - 테스트: `uv run pytest`
 
 현재 백엔드는 차량 프로필 CRUD·활성 차량 전환, 차량별 매뉴얼 준비 상태·재시도, 승인된 PDF/TXT 추출·청크 저장과 출처 검색을 제공합니다. 프런트엔드의 공식 취급설명서 링크는 제조사 원문을 새 탭으로 열며, `ready` 상태에서는 현재 차량 문서만 질문할 수 있습니다. 정확한 문서가 없거나 준비 중이면 `409`, 준비 실패나 상태·인덱스 불일치는 `503`으로 구분합니다. 검색 결과는 문서명·페이지·공식 원문 URL·발췌문이며 LLM이 재작성한 정비 답변은 아닙니다.
 
-쉐보레·KGM의 모델별 장 목록은 제조사 사이트를 자동 수집하지 않습니다. 서버 관리자가 이용 조건과 정확한 차명·연식·세대를 확인한 뒤 `APS_MANUAL_SOURCE_DIR`의 `adapter-manifest.json`에 승인한 매핑만 조회합니다. 같은 연식에 여러 세대가 있으면 세대 입력을 요구하고, 매핑이 없으면 다른 연식 문서를 대신 반환하지 않습니다. 상세 형식과 정책은 [ADR-0004](docs/decisions/0004-use-approved-manual-adapter-catalog.md)를 참고하세요.
+쉐보레·KGM의 모델별 장 목록은 제조사 사이트를 자동 수집하지 않습니다. 서버 관리자가 이용 조건과 정확한 차명·연식·세대를 확인한 뒤 `APS_MANUAL_SOURCE_DIR`의 `adapter-manifest.json`에 승인한 매핑만 조회합니다. API 모드의 취급설명서 화면에서 정확한 단일 매핑을 프로필에 연결할 수 있으며, 이미지 사용 권한을 확인하기 전까지 해당 프로필에는 제조사 이미지를 저장하지 않습니다. 같은 연식에 여러 세대가 있으면 세대 입력을 요구하고, 매핑이 없으면 다른 연식 문서를 대신 반환하지 않습니다. 상세 형식과 정책은 [ADR-0004](docs/decisions/0004-use-approved-manual-adapter-catalog.md)를 참고하세요.
 
 ## 다음 진행 순서
 

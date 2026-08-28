@@ -178,3 +178,71 @@ def test_catalog_endpoint_rejects_bmw_and_unknown_adapter(
             response.json()["error"]["code"]
             == "manual_adapter_catalog_not_supported"
         )
+
+
+def test_exact_catalog_mapping_attaches_to_vehicle_without_guessing_image(
+    client: TestClient,
+) -> None:
+    write_catalog(client.app.state.settings.manual_source_dir, [mapping()])
+    created = client.post(
+        "/api/v1/vehicles",
+        json={
+            "id": "kgm-test",
+            "nickname": "테스트 차량",
+            "manufacturer": "KGM",
+            "model": "테스트 SUV",
+            "model_year": 2025,
+            "powertrain": "gasoline",
+            "fuel_grade": "regular",
+        },
+    )
+    assert created.status_code == 201
+
+    response = client.post(
+        "/api/v1/vehicles/kgm-test/manual-adapters/kgm",
+        json={"generation": "T1"},
+    )
+
+    assert response.status_code == 200
+    profile = response.json()
+    assert profile["manual_site_id"] == "kgm"
+    assert profile["manual_model_name"] == "테스트 SUV"
+    assert profile["manual_generation"] == "T1"
+    assert profile["manual_model_year"] == 2025
+    assert profile["manual_title"] == "테스트 SUV - 취급설명서 (2025.01)"
+    assert profile["manual_source_url"] == (
+        "https://www.kg-mobility.com/owner-manuals/test"
+    )
+    assert profile["manual_image_url"] is None
+    ingestion = client.get(
+        "/api/v1/vehicles/kgm-test/manual-ingestion"
+    ).json()
+    assert ingestion["status"] == "unavailable"
+
+
+def test_catalog_attachment_rejects_manufacturer_mismatch(
+    client: TestClient,
+) -> None:
+    write_catalog(client.app.state.settings.manual_source_dir, [mapping()])
+    assert client.post(
+        "/api/v1/vehicles",
+        json={
+            "id": "wrong-brand",
+            "nickname": "다른 제조사",
+            "manufacturer": "쉐보레",
+            "model": "테스트 SUV",
+            "model_year": 2025,
+            "powertrain": "gasoline",
+            "fuel_grade": "regular",
+        },
+    ).status_code == 201
+
+    response = client.post(
+        "/api/v1/vehicles/wrong-brand/manual-adapters/kgm",
+        json={"generation": "T1"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == (
+        "manual_adapter_manufacturer_mismatch"
+    )

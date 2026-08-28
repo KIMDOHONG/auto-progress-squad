@@ -18,7 +18,7 @@ const STATIC_PAGES: Record<Exclude<AppView, "dashboard" | "planner" | "manual">,
 export default function App() {
   const [view, setView] = useState<AppView>("dashboard");
   const [vehicleManagerOpen, setVehicleManagerOpen] = useState(false);
-  const { vehicles, activeVehicle, syncStatus, setActiveVehicle, addVehicle, updateVehicle, replaceVehicle, deleteVehicle } = useVehicleProfiles();
+  const { vehicles, activeVehicle, syncStatus, setActiveVehicle, addVehicle, updateVehicle, attachManualAdapter, replaceVehicle, deleteVehicle } = useVehicleProfiles();
   const plannerLabel = isEv(activeVehicle) ? "EV 충전 플래너" : isHydrogen(activeVehicle) ? "수소 충전 플래너" : "주유 경로 플래너";
   const navItems: Array<{ view: AppView; label: string; icon: ReactNode }> = [
     { view: "dashboard", label: "홈", icon: <HomeIcon /> },
@@ -42,7 +42,7 @@ export default function App() {
         <main className="main-content">
           {view === "dashboard" ? <Dashboard vehicle={activeVehicle} onNavigate={setView} /> : null}
           {view === "planner" ? <DrivePlanner vehicle={activeVehicle} /> : null}
-          {view === "manual" ? <ManualHub vehicle={activeVehicle} syncStatus={syncStatus} /> : null}
+          {view === "manual" ? <ManualHub vehicle={activeVehicle} syncStatus={syncStatus} onAttachManualAdapter={attachManualAdapter} /> : null}
           {view === "maintenance" || view === "used-car" ? <section className="page-section placeholder-page"><p className="section-caption">다음 구현 단계</p><h1>{STATIC_PAGES[view].title}</h1><p>{STATIC_PAGES[view].copy}</p><div className="placeholder-rail"><span /><span /><span /></div></section> : null}
         </main>
         <ChatPanel vehicle={activeVehicle} vehicles={vehicles} view={view} onAddVehicle={addVehicle} onReplaceVehicle={replaceVehicle} onDeleteVehicle={deleteVehicle} />
