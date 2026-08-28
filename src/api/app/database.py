@@ -217,6 +217,7 @@ def _sync_manual_ingestion_job(
         connection.execute(
             "DELETE FROM manual_ingestion_jobs WHERE vehicle_id = ?", (vehicle_id,)
         )
+        _delete_orphan_manual_documents(connection)
         return
     document_key, source_url = identity
     current = connection.execute(
@@ -251,6 +252,20 @@ def _sync_manual_ingestion_job(
             ready_at = NULL
         """,
         (vehicle_id, document_key, source_url),
+    )
+    _delete_orphan_manual_documents(connection)
+
+
+def _delete_orphan_manual_documents(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        DELETE FROM manual_documents
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM manual_ingestion_jobs AS job
+            WHERE job.document_key = manual_documents.document_key
+        )
+        """
     )
 
 
@@ -381,6 +396,7 @@ def delete_vehicle(database_path: Path, vehicle_id: str) -> None:
         if len(rows) == 1:
             raise LastVehicleDeletionError
         connection.execute("DELETE FROM vehicle_profiles WHERE id = ?", (vehicle_id,))
+        _delete_orphan_manual_documents(connection)
         if target["is_active"]:
             replacement_id = next(row["id"] for row in rows if row["id"] != vehicle_id)
             connection.execute(
@@ -500,6 +516,64 @@ def replace_manual_document(
     if row is None:  # pragma: no cover - guarded by the transaction above
         raise ValueError("verified_manual_required")
     return row
+
+
+def reuse_manual_document(
+    database_path: Path,
+    *,
+    vehicle_id: str,
+    document_key: str,
+    document_name: str,
+    source_url: str,
+    content_sha256: str,
+) -> int | None:
+    with connect(database_path) as connection:
+        job = connection.execute(
+            """
+            SELECT document_key FROM manual_ingestion_jobs
+            WHERE vehicle_id = ?
+            """,
+            (vehicle_id,),
+        ).fetchone()
+        if job is None:
+            raise ValueError("verified_manual_required")
+        if job["document_key"] != document_key:
+            raise ValueError("manual_document_mismatch")
+        document = connection.execute(
+            """
+            SELECT content_sha256,
+                   (SELECT COUNT(*) FROM manual_chunks
+                    WHERE document_key = manual_documents.document_key) AS chunk_count
+            FROM manual_documents
+            WHERE document_key = ?
+            """,
+            (document_key,),
+        ).fetchone()
+        if (
+            document is None
+            or document["content_sha256"] != content_sha256
+            or document["chunk_count"] < 1
+        ):
+            return None
+        connection.execute(
+            """
+            UPDATE manual_documents
+            SET document_name = ?, source_url = ?
+            WHERE document_key = ?
+            """,
+            (document_name, source_url, document_key),
+        )
+        connection.execute(
+            """
+            UPDATE manual_ingestion_jobs
+            SET status = 'ready', failure_code = NULL, failure_message = NULL,
+                updated_at = CURRENT_TIMESTAMP, ready_at = CURRENT_TIMESTAMP
+            WHERE document_key = ?
+            """,
+            (document_key,),
+        )
+        connection.commit()
+        return int(document["chunk_count"])
 
 
 def fail_manual_ingestion(
