@@ -163,16 +163,17 @@ uv run fastapi dev
 - 차량별 매뉴얼 준비 상태: `GET /api/v1/vehicles/{vehicle_id}/manual-ingestion`
 - 실패 작업 재시도: `POST /api/v1/vehicles/{vehicle_id}/manual-ingestion/retry`
 - 준비 완료 문서 검색: `POST /api/v1/manual/search`
+- 제조사 매뉴얼 어댑터 지원 상태: `GET /api/v1/manual-adapters`
 - 테스트: `uv run pytest`
 
 현재 백엔드는 차량 프로필 CRUD·활성 차량 전환, 차량별 매뉴얼 준비 상태·재시도, 승인된 PDF/TXT 추출·청크 저장과 출처 검색을 제공합니다. 프런트엔드의 공식 취급설명서 링크는 제조사 원문을 새 탭으로 열며, `ready` 상태에서는 현재 차량 문서만 질문할 수 있습니다. 정확한 문서가 없거나 준비 중이면 `409`, 준비 실패나 상태·인덱스 불일치는 `503`으로 구분합니다. 검색 결과는 문서명·페이지·공식 원문 URL·발췌문이며 LLM이 재작성한 정비 답변은 아닙니다.
 
 ## 다음 진행 순서
 
-1. **제조사별 수집 정책과 어댑터 구현**: [Issue #18](https://github.com/KIMDOHONG/auto-progress-squad/issues/18)에 따라 이용 조건·재배포·캐시 허용 범위를 확인한 제조사만 자동 다운로드와 장별 문서 정규화 연결
+1. **제조사 매뉴얼 어댑터 확장**: [Issue #17](https://github.com/KIMDOHONG/auto-progress-squad/issues/17)의 공통 계약과 BMW VIN 보호 경계 뒤에, 사용 조건이 확인된 제조사부터 정확한 모델·연식 식별을 연결
 2. **검색 품질 평가와 인덱스 고도화**: 현재 키워드 검색을 평가 질문 세트로 측정하고 임베딩·벡터 검색 적용 여부 결정
 3. **생성형 매뉴얼 답변 연결**: 검색된 문서 위치와 출처를 벗어나지 않는 LLM 답변 및 인용 검증 구현
-4. **제조사 어댑터·리콜 API 연결**: [Issue #17](https://github.com/KIMDOHONG/auto-progress-squad/issues/17)의 BMW·쉐보레·KGM 매뉴얼 식별과 [Issue #19](https://github.com/KIMDOHONG/auto-progress-squad/issues/19)의 활성 차량 기준 리콜 조회 구현
+4. **리콜 API 연결**: [Issue #19](https://github.com/KIMDOHONG/auto-progress-squad/issues/19)의 활성 차량 기준 리콜 조회 구현
 5. **외부 경로 API 연결**: EV·수소·내연기관별 충전소/주유소와 경로 계산을 실제 데이터로 교체
 
 후속 개선사항은 구현 범위가 섞이지 않도록 다음 GitHub Issue에서 관리합니다.

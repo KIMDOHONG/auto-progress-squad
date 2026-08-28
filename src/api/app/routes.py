@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import asdict
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request, Response, status
@@ -20,12 +21,15 @@ from .database import (
     update_vehicle,
 )
 from .errors import ApiError, ServiceNotConfiguredError
+from .manual_adapters import list_manual_adapter_capabilities
 from .manual_ingestion import search_manual_document
 from .schemas import (
     ApiErrorResponse,
     HealthResponse,
     ManualSearchRequest,
     ManualSearchResponse,
+    ManualAdapterCapabilityResponse,
+    ManualAdapterListResponse,
     ManualIngestionStatus,
     RecallListResponse,
     VehicleCreate,
@@ -71,6 +75,20 @@ def health(request: Request) -> HealthResponse:
         service="auto-progress-squad-api",
         version="0.1.0",
         database="ready",
+    )
+
+
+@router.get(
+    "/manual-adapters",
+    response_model=ManualAdapterListResponse,
+    tags=["manual"],
+)
+def list_manual_adapters() -> ManualAdapterListResponse:
+    return ManualAdapterListResponse(
+        items=[
+            ManualAdapterCapabilityResponse(**asdict(capability))
+            for capability in list_manual_adapter_capabilities()
+        ]
     )
 
 

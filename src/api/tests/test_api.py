@@ -140,6 +140,7 @@ def test_openapi_exposes_planned_contracts(client: TestClient) -> None:
     assert "/api/v1/vehicles/{vehicle_id}/manual-ingestion" in paths
     assert "/api/v1/vehicles/{vehicle_id}/manual-ingestion/retry" in paths
     assert "/api/v1/manual/search" in paths
+    assert "/api/v1/manual-adapters" in paths
     assert "/api/v1/vehicles/{vehicle_id}/recalls" in paths
 
 
