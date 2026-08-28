@@ -296,3 +296,48 @@ def test_catalog_attachment_rejects_manufacturer_mismatch(
     assert response.json()["error"]["code"] == (
         "manual_adapter_manufacturer_mismatch"
     )
+
+
+def test_pilot_catalog_example_resolves_only_reviewed_model_years(
+    client: TestClient,
+) -> None:
+    repository_root = Path(__file__).parents[3]
+    example_path = (
+        repository_root / "docs" / "examples" / "adapter-manifest.pilot.json"
+    )
+    payload = json.loads(example_path.read_text(encoding="utf-8"))
+    write_catalog(client.app.state.settings.manual_source_dir, payload["mappings"])
+
+    reviewed = (
+        (
+            "chevrolet",
+            "트랙스 크로스오버",
+            2025,
+            "TRAX CROSSOVER (2023년 국내 출시 세대)",
+            14,
+        ),
+        ("kgm", "토레스", 2023, "J100", 9),
+    )
+    for adapter_id, model, model_year, generation, chapter_count in reviewed:
+        exact = client.post(
+            f"/api/v1/manual-adapters/{adapter_id}/resolve",
+            json={
+                "model": model,
+                "model_year": model_year,
+                "generation": generation,
+            },
+        )
+        adjacent_year = client.post(
+            f"/api/v1/manual-adapters/{adapter_id}/resolve",
+            json={
+                "model": model,
+                "model_year": model_year - 1,
+                "generation": generation,
+            },
+        )
+
+        assert exact.status_code == 200
+        assert exact.json()["source_checked_at"] == "2026-08-29"
+        assert len(exact.json()["chapters"]) == chapter_count
+        assert adjacent_year.status_code == 404
+        assert adjacent_year.json()["error"]["code"] == "manual_mapping_not_found"

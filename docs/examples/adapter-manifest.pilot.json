@@ -1,0 +1,118 @@
+{
+  "mappings": [
+    {
+      "manufacturer_id": "chevrolet",
+      "model": "트랙스 크로스오버",
+      "model_year": 2025,
+      "generation": "TRAX CROSSOVER (2023년 국내 출시 세대)",
+      "manual_title": "TRAX CROSSOVER 차량취급설명서 (2025)",
+      "official_url": "https://www.chevrolet.co.kr/owner-manuals/trax-crossover",
+      "source_checked_at": "2026-08-29",
+      "chapters": [
+        {
+          "title": "소개",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/00-introduction.pdf"
+        },
+        {
+          "title": "키, 도어 및 유리창",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/01-Keys_Doors_and%20Windows.pdf"
+        },
+        {
+          "title": "시트, 안전 시스템",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/02-Seats%20and%20Restraints.pdf"
+        },
+        {
+          "title": "보관",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/03-Storage.pdf"
+        },
+        {
+          "title": "계기판 및 조절장치",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/04-Instruments%20and%20Controls.pdf"
+        },
+        {
+          "title": "조명",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/05-Lighting.pdf"
+        },
+        {
+          "title": "인포테인먼트 시스템",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/06-Infotainment%20System_ko_KR.pdf"
+        },
+        {
+          "title": "온도조절 시스템",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/07-Climate%20Controls.pdf"
+        },
+        {
+          "title": "운전 및 작동",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/08-Driving%20and%20Operating.pdf"
+        },
+        {
+          "title": "차량 관리",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/09-Vehicle%20Care.pdf"
+        },
+        {
+          "title": "서비스 및 정비",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/10-Service%20and%20Maintenance.pdf"
+        },
+        {
+          "title": "기술제원",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/11-Technical%20Data.pdf"
+        },
+        {
+          "title": "온스타",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/12-OnStar.pdf"
+        },
+        {
+          "title": "보증서",
+          "url": "https://www.chevrolet.co.kr/content/dam/chevrolet/as/kr/ko/index/owner-manuals/01-pdfs/trax-crossover/03-pdfs/25Trax%20crossover_%EB%B3%B4%EC%A6%9D%EC%84%9C.pdf"
+        }
+      ]
+    },
+    {
+      "manufacturer_id": "kgm",
+      "model": "토레스",
+      "model_year": 2023,
+      "generation": "J100",
+      "manual_title": "토레스 - 취급설명서 (2022.07)",
+      "official_url": "https://www.kg-mobility.com/sr/update-download/download-center/instruction-manual",
+      "source_checked_at": "2026-08-29",
+      "chapters": [
+        {
+          "title": "일러두기",
+          "url": "https://www.kg-mobility.com/attached/contents/display/file/100003600320002/20250529172008227_9IYeOw.pdf"
+        },
+        {
+          "title": "차량 정보 및 안전 주의 사항",
+          "url": "https://www.kg-mobility.com/attached/contents/display/file/100003600320002/20250529172026864_yP9pE4.pdf"
+        },
+        {
+          "title": "안전장치",
+          "url": "https://www.kg-mobility.com/attached/contents/display/file/100003600320002/20250529172101223_jkzrb1.pdf"
+        },
+        {
+          "title": "편의장치",
+          "url": "https://www.kg-mobility.com/attached/contents/display/file/100003600320002/20250529172124026_sLSH7Q.pdf"
+        },
+        {
+          "title": "시동 및 주행",
+          "url": "https://www.kg-mobility.com/attached/contents/display/file/100003600320002/20250529172201480_Nfyv2n.pdf"
+        },
+        {
+          "title": "비상시 응급조치",
+          "url": "https://www.kg-mobility.com/attached/contents/display/file/100003600320002/20250529172303545_nJOsAU.pdf"
+        },
+        {
+          "title": "정기 점검 및 관리",
+          "url": "https://www.kg-mobility.com/attached/contents/display/file/100003600320002/20250909111610473_s8Ih3X.pdf"
+        },
+        {
+          "title": "요약설명서",
+          "url": "https://www.kg-mobility.com/attached/contents/display/file/100003600320002/20250529172335288_WAwaf3.pdf"
+        },
+        {
+          "title": "색인",
+          "url": "https://www.kg-mobility.com/attached/contents/display/file/100003600320002/20250529172357905_bQaCyx.pdf"
+        }
+      ]
+    }
+  ]
+}
