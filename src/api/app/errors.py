@@ -15,12 +15,18 @@ class ServiceNotConfiguredError(Exception):
 
 class ApiError(Exception):
     def __init__(
-        self, status_code: int, code: str, message: str, retryable: bool = False
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        retryable: bool = False,
+        details: list[dict[str, object]] | None = None,
     ) -> None:
         self.status_code = status_code
         self.code = code
         self.message = message
         self.retryable = retryable
+        self.details = details
 
 
 def install_error_handlers(app: FastAPI) -> None:
@@ -28,7 +34,10 @@ def install_error_handlers(app: FastAPI) -> None:
     async def api_error_handler(_request: Request, error: ApiError) -> JSONResponse:
         payload = ApiErrorResponse(
             error=ApiErrorDetail(
-                code=error.code, message=error.message, retryable=error.retryable
+                code=error.code,
+                message=error.message,
+                retryable=error.retryable,
+                details=error.details,
             )
         )
         return JSONResponse(status_code=error.status_code, content=payload.model_dump())

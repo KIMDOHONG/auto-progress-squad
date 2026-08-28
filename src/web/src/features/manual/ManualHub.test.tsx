@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ManualHub } from "./ManualHub";
 import { DEFAULT_VEHICLES } from "../../lib/vehicle";
+import { VehicleApiError } from "../../lib/vehicleApi";
 
 describe("manual ingestion status", () => {
   const originalFetch = globalThis.fetch;
@@ -166,6 +167,75 @@ describe("manual ingestion status", () => {
       "kgm",
     ));
     expect(await screen.findByText(/차량 프로필에 연결했습니다/)).toBeInTheDocument();
+  });
+
+  it("requires an explicit generation choice when an approved mapping is ambiguous", async () => {
+    const vehicle = {
+      id: "kgm-multiple-generations",
+      nickname: "세대 선택 차량",
+      manufacturer: "KGM",
+      model: "테스트 SUV",
+      modelYear: 2025,
+      powertrain: "gasoline" as const,
+      fuelGrade: "regular" as const,
+    };
+    const linked = {
+      ...vehicle,
+      manual: {
+        siteId: "kgm" as const,
+        modelName: "테스트 SUV",
+        generation: "T2",
+        modelYear: 2025,
+        title: "테스트 SUV T2 취급설명서",
+        sourceUrl: "https://www.kg-mobility.com/manual/test-t2",
+        verifiedAt: "2026-08-28",
+      },
+    };
+    const onAttachManualAdapter = vi.fn()
+      .mockRejectedValueOnce(new VehicleApiError(
+        "manual_generation_required",
+        "세대를 선택해 주세요.",
+        [
+          { generation: "T1", manual_title: "테스트 SUV T1 취급설명서", source_checked_at: "2026-08-27" },
+          { generation: "T2", manual_title: "테스트 SUV T2 취급설명서", source_checked_at: "2026-08-28" },
+        ],
+      ))
+      .mockResolvedValueOnce(linked);
+
+    render(<ManualHub
+      vehicle={vehicle}
+      syncStatus={{
+        mode: "api",
+        label: "SQLite 동기화",
+        detail: "API",
+        apiBaseUrl: "http://127.0.0.1:8000",
+      }}
+      onAttachManualAdapter={onAttachManualAdapter}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: "승인 매뉴얼 연결" }));
+
+    expect(await screen.findByRole("group", { name: "차량 세대 선택" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /T1/ })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: /T2/ })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "선택한 세대로 연결" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("radio", { name: /T2/ }));
+    fireEvent.click(screen.getByRole("button", { name: "선택한 세대로 연결" }));
+
+    await waitFor(() => expect(onAttachManualAdapter).toHaveBeenNthCalledWith(
+      1,
+      "kgm-multiple-generations",
+      "kgm",
+    ));
+    await waitFor(() => expect(onAttachManualAdapter).toHaveBeenNthCalledWith(
+      2,
+      "kgm-multiple-generations",
+      "kgm",
+      "T2",
+    ));
+    expect(await screen.findByText(/차량 프로필에 연결했습니다/)).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "차량 세대 선택" })).not.toBeInTheDocument();
   });
 
   it("labels a linked catalog manual without a RAG index as unavailable", async () => {

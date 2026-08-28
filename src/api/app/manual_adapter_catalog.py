@@ -19,9 +19,15 @@ ALLOWED_CATALOG_HOSTS = {
 
 
 class ManualAdapterCatalogError(RuntimeError):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        details: list[dict[str, object]] | None = None,
+    ) -> None:
         self.code = code
         self.message = message
+        self.details = details
         super().__init__(message)
 
 
@@ -214,8 +220,17 @@ def resolve_manual_catalog_entry(
             "정확히 일치하는 차명·연식·세대의 승인 매뉴얼이 없습니다.",
         )
     if len(matches) > 1:
+        candidates = [
+            {
+                "generation": entry.generation,
+                "manual_title": entry.manual_title,
+                "source_checked_at": entry.source_checked_at,
+            }
+            for entry in sorted(matches, key=lambda item: item.generation.casefold())
+        ]
         raise ManualAdapterCatalogError(
             "manual_generation_required",
             "같은 차명과 연식의 세대가 둘 이상이므로 세대를 선택해 주세요.",
+            details=candidates,
         )
     return matches[0]

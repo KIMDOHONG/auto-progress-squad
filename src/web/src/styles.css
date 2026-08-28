@@ -188,6 +188,17 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .manual-current-copy p { max-width: 720px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
 .manual-current-copy p strong { color: var(--ink); }
 .manual-link-notice { margin: -8px 0 0; border: 1px solid var(--line); border-radius: 12px; background: white; padding: 11px 14px; color: var(--muted); font-size: 12px; }
+.manual-generation-picker { display: grid; gap: 14px; margin: -8px 0 0; border: 1px solid #bfdbfe; border-radius: 16px; background: #f8fbff; padding: 18px; }
+.manual-generation-picker legend { padding: 0 7px; color: var(--ink); font-size: 16px; font-weight: 800; }
+.manual-generation-picker > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.manual-generation-picker > .primary-button { justify-self: end; min-width: 180px; }
+.manual-generation-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.manual-generation-options label { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 12px; background: white; padding: 13px; cursor: pointer; }
+.manual-generation-options label.is-selected { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(37, 99, 235, .12); }
+.manual-generation-options input { margin-top: 3px; accent-color: var(--blue); }
+.manual-generation-options span { display: grid; gap: 4px; min-width: 0; }
+.manual-generation-options strong { color: var(--ink); font-size: 14px; }
+.manual-generation-options small { color: var(--muted); font-size: 11px; line-height: 1.45; }
 .manual-status { width: fit-content; border-radius: 999px; background: #e5f8ef; color: #087e5d; padding: 6px 9px; font-size: 10px; font-weight: 800; }
 .is-pending .manual-status { background: #fff0d8; color: #a85c00; }
 .manual-note { font-size: 11px !important; }
@@ -285,6 +296,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   .page-section { min-height: auto; }
   .manual-current { grid-template-columns: 1fr; }
   .manual-actions { min-width: 0; }
+  .manual-generation-picker > .primary-button { justify-self: stretch; }
   .manual-grid { grid-template-columns: 1fr; }
   .manual-vehicle-visual { width: 190px; }
 }
