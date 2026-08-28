@@ -60,15 +60,31 @@ def test_vehicle_list_reads_sqlite(client: TestClient) -> None:
     assert response.json()["items"][0]["fuel_grade"] == "premium"
 
 
-def test_manual_search_fails_closed_until_rag_is_configured(client: TestClient) -> None:
+def verified_manual_payload(vehicle_id: str = "verified-ioniq5") -> dict[str, object]:
+    payload = vehicle_payload(vehicle_id)
+    payload.update(
+        {
+            "manual_site_id": "hmc",
+            "manual_model_name": "아이오닉 5",
+            "manual_project_code": "NE1",
+            "manual_model_year": 2024,
+            "manual_image_url": "https://ownersmanual.hyundai.com/api/v2/hmc/files/6753/H_NE1_2027.png",
+            "manual_verified_at": "2026-08-27T00:00:00.000Z",
+        }
+    )
+    return payload
+
+
+def test_manual_search_is_blocked_while_document_is_pending(client: TestClient) -> None:
+    assert client.post("/api/v1/vehicles", json=verified_manual_payload()).status_code == 201
     response = client.post(
         "/api/v1/manual/search",
-        json={"vehicle_id": "sample-bmw3", "question": "타이어 공기압은?"},
+        json={"vehicle_id": "verified-ioniq5", "question": "타이어 공기압은?"},
     )
 
-    assert response.status_code == 503
-    assert response.json()["error"]["code"] == "manual_rag_not_configured"
-    assert response.json()["error"]["retryable"] is False
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "manual_ingestion_pending"
+    assert response.json()["error"]["retryable"] is True
 
 
 def test_recall_lookup_fails_closed_until_source_is_configured(client: TestClient) -> None:
@@ -121,6 +137,8 @@ def test_openapi_exposes_planned_contracts(client: TestClient) -> None:
 
     assert "/api/v1/health" in paths
     assert "/api/v1/vehicles" in paths
+    assert "/api/v1/vehicles/{vehicle_id}/manual-ingestion" in paths
+    assert "/api/v1/vehicles/{vehicle_id}/manual-ingestion/retry" in paths
     assert "/api/v1/manual/search" in paths
     assert "/api/v1/vehicles/{vehicle_id}/recalls" in paths
 
@@ -235,17 +253,7 @@ def test_hydrogen_vehicle_profile_is_supported(client: TestClient) -> None:
 def test_verified_manual_metadata_is_persisted_and_domain_checked(
     client: TestClient,
 ) -> None:
-    payload = vehicle_payload("verified-ioniq5")
-    payload.update(
-        {
-            "manual_site_id": "hmc",
-            "manual_model_name": "아이오닉 5",
-            "manual_project_code": "NE1",
-            "manual_model_year": 2024,
-            "manual_image_url": "https://ownersmanual.hyundai.com/api/v2/hmc/files/6753/H_NE1_2027.png",
-            "manual_verified_at": "2026-08-27T00:00:00.000Z",
-        }
-    )
+    payload = verified_manual_payload()
 
     response = client.post("/api/v1/vehicles", json=payload)
 
@@ -258,6 +266,94 @@ def test_verified_manual_metadata_is_persisted_and_domain_checked(
     invalid = client.post("/api/v1/vehicles", json=payload)
     assert invalid.status_code == 422
     assert invalid.json()["error"]["code"] == "validation_error"
+
+
+def test_verified_manual_queues_ingestion_and_retry_is_explicit(
+    client: TestClient,
+) -> None:
+    assert client.post("/api/v1/vehicles", json=verified_manual_payload()).status_code == 201
+
+    status_response = client.get(
+        "/api/v1/vehicles/verified-ioniq5/manual-ingestion"
+    )
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["status"] == "pending"
+    assert status_payload["document_key"] == "hmc:NE1:2024"
+    assert status_payload["source_url"] == (
+        "https://ownersmanual.hyundai.com/manual/"
+        "%EC%95%84%EC%9D%B4%EC%98%A4%EB%8B%89%205"
+        "?projCode=NE1&year=2024&langCode=ko_KR&countryCode=A99"
+    )
+    assert status_payload["can_search"] is False
+    assert status_payload["attempt_count"] == 0
+
+    retry_response = client.post(
+        "/api/v1/vehicles/verified-ioniq5/manual-ingestion/retry"
+    )
+    assert retry_response.status_code == 202
+    assert retry_response.json()["status"] == "pending"
+    assert retry_response.json()["attempt_count"] == 1
+
+
+def test_unverified_vehicle_reports_unavailable_and_cannot_retry(
+    client: TestClient,
+) -> None:
+    assert client.post("/api/v1/vehicles", json=vehicle_payload("unverified")).status_code == 201
+
+    status_response = client.get("/api/v1/vehicles/unverified/manual-ingestion")
+    assert status_response.status_code == 200
+    assert status_response.json() == {
+        "vehicle_id": "unverified",
+        "status": "unavailable",
+        "document_key": None,
+        "source_url": None,
+        "attempt_count": 0,
+        "failure_code": None,
+        "failure_message": None,
+        "queued_at": None,
+        "updated_at": None,
+        "ready_at": None,
+        "can_search": False,
+    }
+    retry_response = client.post(
+        "/api/v1/vehicles/unverified/manual-ingestion/retry"
+    )
+    assert retry_response.status_code == 409
+    assert retry_response.json()["error"]["code"] == "verified_manual_required"
+
+
+def test_manual_identity_change_resets_job_and_vehicle_delete_cascades(
+    client: TestClient,
+) -> None:
+    first_payload = verified_manual_payload()
+    assert client.post("/api/v1/vehicles", json=first_payload).status_code == 201
+    assert client.post("/api/v1/vehicles/verified-ioniq5/manual-ingestion/retry").json()["attempt_count"] == 1
+
+    updated_payload = {key: value for key, value in first_payload.items() if key != "id"}
+    updated_payload.update(
+        {
+            "model": "아이오닉 5 N",
+            "manual_model_name": "아이오닉 5 N",
+            "manual_project_code": "NE1N",
+        }
+    )
+    updated = client.put("/api/v1/vehicles/verified-ioniq5", json=updated_payload)
+    assert updated.status_code == 200
+    ingestion = client.get(
+        "/api/v1/vehicles/verified-ioniq5/manual-ingestion"
+    ).json()
+    assert ingestion["document_key"] == "hmc:NE1N:2024"
+    assert ingestion["attempt_count"] == 0
+
+    assert client.post("/api/v1/vehicles", json=vehicle_payload("second")).status_code == 201
+    assert client.delete("/api/v1/vehicles/verified-ioniq5").status_code == 204
+    database_path = client.app.state.settings.database_path
+    with sqlite3.connect(database_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM manual_ingestion_jobs WHERE vehicle_id = ?",
+            ("verified-ioniq5",),
+        ).fetchone()[0] == 0
 
 
 def test_schema_v2_migration_preserves_profiles_and_adds_hydrogen(tmp_path: Path) -> None:
@@ -303,3 +399,7 @@ def test_schema_v2_migration_preserves_profiles_and_adds_hydrogen(tmp_path: Path
         }
         assert "manual_project_code" in columns
         assert "manual_image_url" in columns
+        ingestion_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(manual_ingestion_jobs)")
+        }
+        assert {"vehicle_id", "document_key", "status", "source_url"} <= ingestion_columns

@@ -12,7 +12,9 @@ from .database import (
     create_vehicle,
     database_is_ready,
     delete_vehicle,
+    get_manual_ingestion_row,
     list_vehicle_rows,
+    retry_manual_ingestion,
     update_vehicle,
 )
 from .errors import ApiError, ServiceNotConfiguredError
@@ -21,6 +23,7 @@ from .schemas import (
     HealthResponse,
     ManualSearchRequest,
     ManualSearchResponse,
+    ManualIngestionStatus,
     RecallListResponse,
     VehicleCreate,
     VehicleListResponse,
@@ -40,6 +43,16 @@ def vehicle_from_row(row: sqlite3.Row) -> VehicleProfile:
 
 def vehicle_not_found() -> ApiError:
     return ApiError(status.HTTP_404_NOT_FOUND, "vehicle_not_found", "차량을 찾을 수 없습니다.")
+
+
+def manual_ingestion_from_row(
+    vehicle_id: str, row: sqlite3.Row | None
+) -> ManualIngestionStatus:
+    if row is None:
+        return ManualIngestionStatus(vehicle_id=vehicle_id, status="unavailable")
+    record = dict(row)
+    record["can_search"] = record["status"] == "ready"
+    return ManualIngestionStatus(**record)
 
 
 @router.get("/health", response_model=HealthResponse, tags=["system"])
@@ -147,13 +160,86 @@ def remove_vehicle(request: Request, vehicle_id: str) -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.get(
+    "/vehicles/{vehicle_id}/manual-ingestion",
+    response_model=ManualIngestionStatus,
+    responses={404: {"model": ApiErrorResponse}},
+    tags=["manual"],
+)
+def get_manual_ingestion(
+    request: Request, vehicle_id: str
+) -> ManualIngestionStatus:
+    try:
+        row = get_manual_ingestion_row(
+            request.app.state.settings.database_path, vehicle_id
+        )
+    except VehicleNotFoundError:
+        raise vehicle_not_found() from None
+    return manual_ingestion_from_row(vehicle_id, row)
+
+
+@router.post(
+    "/vehicles/{vehicle_id}/manual-ingestion/retry",
+    response_model=ManualIngestionStatus,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={404: {"model": ApiErrorResponse}, 409: {"model": ApiErrorResponse}},
+    tags=["manual"],
+)
+def retry_vehicle_manual_ingestion(
+    request: Request, vehicle_id: str
+) -> ManualIngestionStatus:
+    try:
+        row = retry_manual_ingestion(
+            request.app.state.settings.database_path, vehicle_id
+        )
+    except VehicleNotFoundError:
+        raise vehicle_not_found() from None
+    except ValueError:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "verified_manual_required",
+            "정확한 공식 취급설명서가 확인된 차량만 문서 준비를 시작할 수 있습니다.",
+        ) from None
+    return manual_ingestion_from_row(vehicle_id, row)
+
+
 @router.post(
     "/manual/search",
     response_model=ManualSearchResponse,
-    responses={503: {"model": ApiErrorResponse}},
+    responses={
+        404: {"model": ApiErrorResponse},
+        409: {"model": ApiErrorResponse},
+        503: {"model": ApiErrorResponse},
+    },
     tags=["manual"],
 )
-def search_manual(_payload: ManualSearchRequest) -> ManualSearchResponse:
+def search_manual(request: Request, payload: ManualSearchRequest) -> ManualSearchResponse:
+    try:
+        ingestion = get_manual_ingestion_row(
+            request.app.state.settings.database_path, payload.vehicle_id
+        )
+    except VehicleNotFoundError:
+        raise vehicle_not_found() from None
+    if ingestion is None:
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "verified_manual_required",
+            "정확한 공식 취급설명서가 확인되기 전에는 매뉴얼 검색을 사용할 수 없습니다.",
+        )
+    if ingestion["status"] == "pending":
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "manual_ingestion_pending",
+            "취급설명서를 확인 중입니다. 준비가 끝난 뒤 다시 시도해 주세요.",
+            retryable=True,
+        )
+    if ingestion["status"] == "failed":
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "manual_ingestion_failed",
+            "취급설명서 준비에 실패했습니다. 재시도 후 상태를 확인해 주세요.",
+            retryable=True,
+        )
     raise ServiceNotConfiguredError(
         code="manual_rag_not_configured",
         message="차량 매뉴얼 RAG 데이터가 아직 연결되지 않았습니다.",
