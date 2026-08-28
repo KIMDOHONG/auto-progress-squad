@@ -151,7 +151,7 @@ class ManualAdapterCapabilityResponse(BaseModel):
     official_url: str
     identification_mode: Literal["vin", "model-year-generation"]
     integration_mode: Literal["server-only", "official-link"]
-    lookup_status: Literal["permission-required", "planned"]
+    lookup_status: Literal["permission-required", "manifest-required"]
     stores_raw_identifier: bool
     image_policy: Literal["none", "ephemeral-only"]
     failure_code: str
@@ -159,6 +159,28 @@ class ManualAdapterCapabilityResponse(BaseModel):
 
 class ManualAdapterListResponse(BaseModel):
     items: list[ManualAdapterCapabilityResponse]
+
+
+class ManualCatalogLookupRequest(BaseModel):
+    model: str = Field(min_length=1, max_length=80)
+    model_year: int = Field(ge=1990, le=2100)
+    generation: str | None = Field(default=None, min_length=1, max_length=80)
+
+
+class ManualChapterLinkResponse(BaseModel):
+    title: str
+    url: str
+
+
+class ManualCatalogLookupResponse(BaseModel):
+    manufacturer_id: Literal["chevrolet", "kgm"]
+    model: str
+    model_year: int
+    generation: str
+    manual_title: str
+    official_url: str
+    source_checked_at: str
+    chapters: list[ManualChapterLinkResponse]
 
 
 class RecallItem(BaseModel):

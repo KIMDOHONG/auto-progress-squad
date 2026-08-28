@@ -1,0 +1,180 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+
+def mapping(
+    *,
+    manufacturer_id: str = "kgm",
+    model: str = "테스트 SUV",
+    model_year: int = 2025,
+    generation: str = "T1",
+    official_url: str | None = None,
+    chapter_url: str | None = None,
+) -> dict[str, object]:
+    host = (
+        "www.chevrolet.co.kr"
+        if manufacturer_id == "chevrolet"
+        else "www.kg-mobility.com"
+    )
+    return {
+        "manufacturer_id": manufacturer_id,
+        "model": model,
+        "model_year": model_year,
+        "generation": generation,
+        "manual_title": f"{model} - 취급설명서 (2025.01)",
+        "official_url": official_url or f"https://{host}/owner-manuals/test",
+        "source_checked_at": "2026-08-28",
+        "chapters": [
+            {
+                "title": "안전 주의사항",
+                "url": chapter_url or f"https://{host}/manuals/test/safety.pdf",
+            },
+            {
+                "title": "시동 및 주행",
+                "url": f"https://{host}/manuals/test/driving.pdf",
+            },
+        ],
+    }
+
+
+def write_catalog(source_root: Path, mappings: list[dict[str, object]]) -> None:
+    source_root.mkdir(parents=True, exist_ok=True)
+    (source_root / "adapter-manifest.json").write_text(
+        json.dumps({"mappings": mappings}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def test_catalog_lookup_returns_only_exact_approved_mapping(
+    client: TestClient,
+) -> None:
+    write_catalog(client.app.state.settings.manual_source_dir, [mapping()])
+
+    response = client.post(
+        "/api/v1/manual-adapters/kgm/resolve",
+        json={"model": "테스트 SUV", "model_year": 2025, "generation": "T1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "manufacturer_id": "kgm",
+        "model": "테스트 SUV",
+        "model_year": 2025,
+        "generation": "T1",
+        "manual_title": "테스트 SUV - 취급설명서 (2025.01)",
+        "official_url": "https://www.kg-mobility.com/owner-manuals/test",
+        "source_checked_at": "2026-08-28",
+        "chapters": [
+            {
+                "title": "안전 주의사항",
+                "url": "https://www.kg-mobility.com/manuals/test/safety.pdf",
+            },
+            {
+                "title": "시동 및 주행",
+                "url": "https://www.kg-mobility.com/manuals/test/driving.pdf",
+            },
+        ],
+    }
+
+
+def test_catalog_lookup_does_not_fall_back_to_another_model_year(
+    client: TestClient,
+) -> None:
+    write_catalog(client.app.state.settings.manual_source_dir, [mapping(model_year=2024)])
+
+    response = client.post(
+        "/api/v1/manual-adapters/kgm/resolve",
+        json={"model": "테스트 SUV", "model_year": 2025, "generation": "T1"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "manual_mapping_not_found"
+
+
+def test_catalog_lookup_requires_generation_when_same_year_has_multiple(
+    client: TestClient,
+) -> None:
+    write_catalog(
+        client.app.state.settings.manual_source_dir,
+        [mapping(generation="T1"), mapping(generation="T2")],
+    )
+
+    ambiguous = client.post(
+        "/api/v1/manual-adapters/kgm/resolve",
+        json={"model": "테스트 SUV", "model_year": 2025},
+    )
+    exact = client.post(
+        "/api/v1/manual-adapters/kgm/resolve",
+        json={"model": "테스트 SUV", "model_year": 2025, "generation": "T2"},
+    )
+
+    assert ambiguous.status_code == 409
+    assert ambiguous.json()["error"]["code"] == "manual_generation_required"
+    assert exact.status_code == 200
+    assert exact.json()["generation"] == "T2"
+
+
+def test_catalog_lookup_fails_closed_without_approved_manifest(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/manual-adapters/chevrolet/resolve",
+        json={"model": "테스트 CUV", "model_year": 2025},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "manual_adapter_catalog_not_found"
+
+
+def test_catalog_rejects_non_manufacturer_chapter_domain(
+    client: TestClient,
+) -> None:
+    write_catalog(
+        client.app.state.settings.manual_source_dir,
+        [mapping(chapter_url="https://example.com/copied-manual.pdf")],
+    )
+
+    response = client.post(
+        "/api/v1/manual-adapters/kgm/resolve",
+        json={"model": "테스트 SUV", "model_year": 2025, "generation": "T1"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "manual_adapter_source_not_allowed"
+
+
+def test_catalog_rejects_invalid_source_check_date(
+    client: TestClient,
+) -> None:
+    invalid_mapping = mapping()
+    invalid_mapping["source_checked_at"] = "2026-08"
+    write_catalog(client.app.state.settings.manual_source_dir, [invalid_mapping])
+
+    response = client.post(
+        "/api/v1/manual-adapters/kgm/resolve",
+        json={"model": "테스트 SUV", "model_year": 2025, "generation": "T1"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "manual_adapter_catalog_invalid"
+
+
+def test_catalog_endpoint_rejects_bmw_and_unknown_adapter(
+    client: TestClient,
+) -> None:
+    write_catalog(client.app.state.settings.manual_source_dir, [mapping()])
+
+    for adapter_id in ("bmw", "unknown"):
+        response = client.post(
+            f"/api/v1/manual-adapters/{adapter_id}/resolve",
+            json={"model": "테스트 SUV", "model_year": 2025},
+        )
+        assert response.status_code == 404
+        assert (
+            response.json()["error"]["code"]
+            == "manual_adapter_catalog_not_supported"
+        )

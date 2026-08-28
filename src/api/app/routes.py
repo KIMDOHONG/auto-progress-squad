@@ -21,6 +21,12 @@ from .database import (
     update_vehicle,
 )
 from .errors import ApiError, ServiceNotConfiguredError
+from .manual_adapter_catalog import (
+    CATALOG_MANUFACTURERS,
+    ManualAdapterCatalogError,
+    load_manual_adapter_catalog,
+    resolve_manual_catalog_entry,
+)
 from .manual_adapters import list_manual_adapter_capabilities
 from .manual_ingestion import search_manual_document
 from .schemas import (
@@ -30,6 +36,8 @@ from .schemas import (
     ManualSearchResponse,
     ManualAdapterCapabilityResponse,
     ManualAdapterListResponse,
+    ManualCatalogLookupRequest,
+    ManualCatalogLookupResponse,
     ManualIngestionStatus,
     RecallListResponse,
     VehicleCreate,
@@ -89,6 +97,65 @@ def list_manual_adapters() -> ManualAdapterListResponse:
             ManualAdapterCapabilityResponse(**asdict(capability))
             for capability in list_manual_adapter_capabilities()
         ]
+    )
+
+
+@router.post(
+    "/manual-adapters/{adapter_id}/resolve",
+    response_model=ManualCatalogLookupResponse,
+    responses={
+        404: {"model": ApiErrorResponse},
+        409: {"model": ApiErrorResponse},
+        503: {"model": ApiErrorResponse},
+    },
+    tags=["manual"],
+)
+def resolve_manual_adapter(
+    request: Request,
+    adapter_id: str,
+    payload: ManualCatalogLookupRequest,
+) -> ManualCatalogLookupResponse:
+    if adapter_id not in CATALOG_MANUFACTURERS:
+        raise ApiError(
+            status.HTTP_404_NOT_FOUND,
+            "manual_adapter_catalog_not_supported",
+            "이 제조사는 승인 카탈로그 방식으로 조회하지 않습니다.",
+        )
+    try:
+        entries = load_manual_adapter_catalog(
+            request.app.state.settings.manual_source_dir
+        )
+        entry = resolve_manual_catalog_entry(
+            entries,
+            manufacturer_id=adapter_id,
+            model=payload.model,
+            model_year=payload.model_year,
+            generation=payload.generation,
+        )
+    except ManualAdapterCatalogError as error:
+        if error.code in {
+            "manual_adapter_catalog_not_found",
+            "manual_adapter_catalog_invalid",
+            "manual_adapter_catalog_duplicate_chapter",
+            "manual_adapter_catalog_duplicate_mapping",
+            "manual_adapter_source_not_allowed",
+        }:
+            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        elif error.code == "manual_generation_required":
+            status_code = status.HTTP_409_CONFLICT
+        else:
+            status_code = status.HTTP_404_NOT_FOUND
+        raise ApiError(status_code, error.code, error.message) from None
+
+    return ManualCatalogLookupResponse(
+        manufacturer_id=entry.manufacturer_id,
+        model=entry.model,
+        model_year=entry.model_year,
+        generation=entry.generation,
+        manual_title=entry.manual_title,
+        official_url=entry.official_url,
+        source_checked_at=entry.source_checked_at,
+        chapters=[asdict(chapter) for chapter in entry.chapters],
     )
 
 
