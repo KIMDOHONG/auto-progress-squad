@@ -49,6 +49,11 @@ embedding = [
 generation = [
     { name = "openvino-genai" },
 ]
+generation-evaluation = [
+    { name = "huggingface-hub" },
+    { name = "openvino-genai" },
+    { name = "psutil" },
+]
 test = [
     { name = "httpx" },
     { name = "pytest" },
@@ -58,12 +63,15 @@ test = [
 requires-dist = [
     { name = "fastapi", extras = ["standard-no-fastapi-cloud-cli"], specifier = ">=0.116,<1.0" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28,<1.0" },
+    { name = "huggingface-hub", marker = "extra == 'generation-evaluation'", specifier = ">=1.0,<2.0" },
     { name = "openvino-genai", marker = "extra == 'generation'", specifier = ">=2026.3,<2026.4" },
+    { name = "openvino-genai", marker = "extra == 'generation-evaluation'", specifier = ">=2026.3,<2026.4" },
+    { name = "psutil", marker = "extra == 'generation-evaluation'", specifier = ">=7.0,<8.0" },
     { name = "pypdf", specifier = ">=5,<7" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.4,<10.0" },
     { name = "sentence-transformers", extras = ["openvino"], marker = "extra == 'embedding'", specifier = ">=6.0,<7.0" },
 ]
-provides-extras = ["test", "embedding", "generation"]
+provides-extras = ["test", "embedding", "generation", "generation-evaluation"]
 
 [[package]]
 name = "certifi"

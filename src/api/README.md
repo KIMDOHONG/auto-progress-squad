@@ -62,3 +62,4 @@ uv run pytest
 - OpenVINO GenAI 답변은 `uv sync --locked --extra generation`으로 선택 설치합니다. 모델 가중치는 포함하지 않으며, 실제 검토 모델 경로와 `APS_MANUAL_ANSWER_MODE=openvino`를 모두 지정한 환경에서만 지연 로드합니다.
 - 잠금 파일의 `openvino-genai 2026.3.1.0` 실행 라이브러리는 Apache-2.0이며, 이 라이선스가 별도로 준비하는 모델 가중치의 이용 조건까지 허가하지는 않습니다.
 - 모델의 구조화 JSON은 사실성 보장이 아니므로 서버가 인용 범위·중복, 근거에 없는 숫자와 최소 어휘 중첩을 다시 검증하고 인용 표기를 직접 렌더링합니다. 생성 또는 검증 실패는 `503`으로 반환하며 기본 출처 안내로 숨기지 않습니다.
+- 로컬 모델 다운로드와 CPU 재현 평가는 `uv sync --locked --extra generation-evaluation` 후 `python -m app.manual_generation_evaluation`을 사용합니다. 현재 파일럿의 모델 ID·고정 리비전·SHA-256·측정 결과는 `models/manual-generation-candidates.md`를 참고하세요.

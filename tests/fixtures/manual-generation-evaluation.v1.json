@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "name": "synthetic-korean-grounded-manual-generation-v1",
+  "notice": "생성·인용 평가 전용 합성 문장입니다. 제조사 설명서 원문을 복제하지 않으며 실제 승인 문서 품질을 대표하지 않습니다.",
+  "cases": [
+    {
+      "id": "tire-pressure-label",
+      "question": "권장 타이어 공기압은 어디서 확인하나요?",
+      "sources": [{"document_name": "평가용 합성 차량 취급설명서", "source_url": "https://example.com/synthetic-owner-manual", "page": 11, "section": "휠 및 타이어", "excerpt": "타이어 공기압은 운전석 도어 프레임에 부착된 라벨의 권장 냉간 공기압을 확인하십시오."}],
+      "expected_citations": [1],
+      "required_terms": ["운전석", "도어", "라벨"]
+    },
+    {
+      "id": "battery-jump-start",
+      "question": "배터리가 방전된 경우 비상 시동 방법을 알려줘",
+      "sources": [{"document_name": "평가용 합성 차량 취급설명서", "source_url": "https://example.com/synthetic-owner-manual", "page": 22, "section": "비상 시동", "excerpt": "배터리가 방전된 경우 점프 케이블을 올바른 순서로 연결해 비상 시동을 거십시오."}],
+      "expected_citations": [1],
+      "required_terms": ["배터리", "점프", "케이블", "비상 시동"]
+    },
+    {
+      "id": "front-tow-hook",
+      "question": "견인 고리는 어디에 설치하나요?",
+      "sources": [{"document_name": "평가용 합성 차량 취급설명서", "source_url": "https://example.com/synthetic-owner-manual", "page": 33, "section": "견인", "excerpt": "차량을 견인할 때는 앞 범퍼의 견인 고리 장착부 덮개를 열고 견인 고리를 끝까지 돌려 체결하십시오."}],
+      "expected_citations": [1],
+      "required_terms": ["앞 범퍼", "견인 고리", "장착부"]
+    },
+    {
+      "id": "coolant-level",
+      "question": "냉각수 양을 어떻게 점검해?",
+      "sources": [{"document_name": "평가용 합성 차량 취급설명서", "source_url": "https://example.com/synthetic-owner-manual", "page": 44, "section": "냉각수", "excerpt": "엔진 냉각수 수위는 엔진이 식은 상태에서 보조 탱크의 MIN과 MAX 표시 사이인지 점검하십시오."}],
+      "expected_citations": [1],
+      "required_terms": ["엔진", "식은 상태", "보조 탱크", "MIN", "MAX"]
+    },
+    {
+      "id": "brake-warning-light",
+      "question": "브레이크 경고등이 주행 중 켜지면 어떻게 해야 해?",
+      "sources": [{"document_name": "평가용 합성 차량 취급설명서", "source_url": "https://example.com/synthetic-owner-manual", "page": 55, "section": "경고등", "excerpt": "브레이크 경고등이 주행 중 켜지면 안전한 장소에 정차하고 브레이크액 수위를 점검하십시오."}],
+      "expected_citations": [1],
+      "required_terms": ["안전한 장소", "정차", "브레이크액"]
+    },
+    {
+      "id": "slow-charge-connector",
+      "question": "완속 충전 커넥터는 어디에 연결해?",
+      "sources": [{"document_name": "평가용 합성 차량 취급설명서", "source_url": "https://example.com/synthetic-owner-manual", "page": 66, "section": "충전", "excerpt": "완속 충전 커넥터를 차량 충전구에 연결하면 계기판의 충전 상태 표시등이 점등됩니다."}],
+      "expected_citations": [1],
+      "required_terms": ["완속 충전", "커넥터", "차량 충전구"]
+    },
+    {
+      "id": "wiper-blade-replacement",
+      "question": "와이퍼 블레이드 교체 방법을 알려줘",
+      "sources": [{"document_name": "평가용 합성 차량 취급설명서", "source_url": "https://example.com/synthetic-owner-manual", "page": 77, "section": "와이퍼", "excerpt": "와이퍼 블레이드를 교체하려면 와이퍼 암을 세우고 잠금 클립을 누른 뒤 블레이드를 분리하십시오."}],
+      "expected_citations": [1],
+      "required_terms": ["와이퍼 암", "잠금 클립", "블레이드"]
+    },
+    {
+      "id": "child-safety-lock",
+      "question": "어린이 보호 잠금 장치는 어떤 기능이야?",
+      "sources": [{"document_name": "평가용 합성 차량 취급설명서", "source_url": "https://example.com/synthetic-owner-manual", "page": 88, "section": "어린이 보호 잠금", "excerpt": "뒷좌석 도어의 어린이 보호 잠금 장치를 작동하면 실내 손잡이로 문을 열 수 없습니다."}],
+      "expected_citations": [1],
+      "required_terms": ["어린이 보호 잠금", "실내 손잡이", "열 수 없습니다"]
+    }
+  ]
+}
