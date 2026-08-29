@@ -31,6 +31,10 @@ from .manual_adapter_catalog import (
 )
 from .manual_adapters import list_manual_adapter_capabilities
 from .manual_embedding_search import ManualEmbeddingSearchError
+from .manual_grounded_answer import (
+    ManualAnswerGenerationError,
+    ManualAnswerValidationError,
+)
 from .manual_ingestion import search_manual_document
 from .schemas import (
     ApiErrorResponse,
@@ -456,15 +460,40 @@ def search_manual(request: Request, payload: ManualSearchRequest) -> ManualSearc
             payload.question,
             payload.limit,
         )
-    answer = (
-        "공식 취급설명서에서 관련 내용을 찾았습니다. 아래 출처의 원문을 확인해 주세요."
-        if sources
-        else "현재 질문과 일치하는 내용을 이 차량의 공식 취급설명서에서 찾지 못했습니다."
-    )
+    answer_engine = "source-list-v1"
+    citations: list[int] = []
+    if not sources:
+        answer = "현재 질문과 일치하는 내용을 이 차량의 공식 취급설명서에서 찾지 못했습니다."
+    elif request.app.state.settings.manual_answer_mode == "openvino":
+        try:
+            grounded_answer = request.app.state.manual_answer_generator.generate(
+                payload.question, sources
+            )
+        except ManualAnswerGenerationError:
+            raise ApiError(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "manual_answer_generation_unavailable",
+                "로컬 생성 답변 모델을 사용할 수 없습니다. 서버 설정과 모델 상태를 확인해 주세요.",
+                retryable=True,
+            ) from None
+        except ManualAnswerValidationError:
+            raise ApiError(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "manual_answer_validation_failed",
+                "생성 답변이 검색 근거와 인용 검증을 통과하지 못했습니다. 원문 출처를 직접 확인해 주세요.",
+                retryable=True,
+            ) from None
+        answer = grounded_answer.answer
+        citations = list(grounded_answer.citations)
+        answer_engine = "openvino-genai-grounded-v1"
+    else:
+        answer = "공식 취급설명서에서 관련 내용을 찾았습니다. 아래 출처의 원문을 확인해 주세요."
     return ManualSearchResponse(
         answer=answer,
         sources=sources,
         search_engine=search_engine,
+        answer_engine=answer_engine,
+        citations=citations,
         generated_at=datetime.now(UTC).isoformat(),
     )
 

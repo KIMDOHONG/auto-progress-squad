@@ -1,6 +1,6 @@
 # Backend API
 
-FastAPI와 SQLite 기반 백엔드입니다. 차량 프로필, 승인된 로컬 매뉴얼의 추출·청크 저장·출처 검색과 리콜 API 계약을 제공합니다. 생성형 LLM 답변과 외부 리콜 데이터는 아직 연결하지 않습니다.
+FastAPI와 SQLite 기반 백엔드입니다. 차량 프로필, 승인된 로컬 매뉴얼의 추출·청크 저장·출처 검색과 리콜 API 계약을 제공합니다. 생성형 매뉴얼 답변은 검증 환경에서만 선택적으로 연결하며 외부 리콜 데이터는 아직 연결하지 않습니다.
 
 ## 실행
 
@@ -25,6 +25,12 @@ uv run pytest
 | `APS_DATABASE_PATH` | `src/api/data/auto_progress.db` | SQLite 파일 경로 |
 | `APS_CORS_ORIGINS` | 로컬 Vite 주소와 GitHub Pages origin | 쉼표로 구분한 허용 origin |
 | `APS_MANUAL_SOURCE_DIR` | `src/api/data/manuals` | 승인된 PDF/TXT와 `manifest.json` 디렉터리 |
+| `APS_MANUAL_SEARCH_MODE` | `keyword` | `keyword` 또는 선택형 `embedding` 검색 |
+| `APS_MANUAL_ANSWER_MODE` | `source-list` | `source-list` 또는 선택형 `openvino` 답변 |
+| `APS_MANUAL_GENERATION_MODEL_PATH` | 없음 | 운영자가 검토한 로컬 OpenVINO GenAI 모델 경로 |
+| `APS_MANUAL_GENERATION_DEVICE` | `CPU` | OpenVINO 추론 장치 |
+| `APS_MANUAL_GENERATION_MAX_NEW_TOKENS` | `256` | 생성 출력 토큰 상한 |
+| `APS_MANUAL_GROUNDING_MIN_TOKEN_OVERLAP` | `0.55` | claim과 인용 발췌문의 최소 어휘 중첩 비율 |
 
 ## 현재 API
 
@@ -53,3 +59,6 @@ uv run pytest
 - 쉐보레·KGM 매핑은 같은 디렉터리의 `adapter-manifest.json`에 별도로 둡니다. 항목에는 `manufacturer_id`, `model`, `model_year`, `generation`, `manual_title`, `official_url`, `source_checked_at`와 `chapters`의 `title`·`url`이 필요합니다. 제조사 API 응답이나 PDF를 저장소에 커밋하지 말고, 이용 조건과 정확한 차량 대응을 검토한 링크만 운영 서버에 배치합니다.
 - 같은 차명·연식에 승인된 세대가 둘 이상이면 조회·연결 API는 `409 manual_generation_required`와 `generation`, `manual_title`, `source_checked_at` 후보만 반환합니다. 클라이언트가 사용자의 세대 선택을 받은 뒤 `generation`을 다시 보내야 하며, 오류 응답에는 공식 URL이나 PDF URL을 포함하지 않습니다.
 - 제조사 문서는 소스 저장소나 GitHub Pages에 포함하지 않으며, 실제 운영 전에는 각 제조사의 이용 조건과 재사용 범위를 별도로 확인해야 합니다.
+- OpenVINO GenAI 답변은 `uv sync --locked --extra generation`으로 선택 설치합니다. 모델 가중치는 포함하지 않으며, 실제 검토 모델 경로와 `APS_MANUAL_ANSWER_MODE=openvino`를 모두 지정한 환경에서만 지연 로드합니다.
+- 잠금 파일의 `openvino-genai 2026.3.1.0` 실행 라이브러리는 Apache-2.0이며, 이 라이선스가 별도로 준비하는 모델 가중치의 이용 조건까지 허가하지는 않습니다.
+- 모델의 구조화 JSON은 사실성 보장이 아니므로 서버가 인용 범위·중복, 근거에 없는 숫자와 최소 어휘 중첩을 다시 검증하고 인용 표기를 직접 렌더링합니다. 생성 또는 검증 실패는 `503`으로 반환하며 기본 출처 안내로 숨기지 않습니다.

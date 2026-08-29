@@ -154,6 +154,8 @@ def test_worker_marks_document_ready_and_search_returns_sources(
     payload = search_response.json()
     assert payload["answer"].startswith("공식 취급설명서에서")
     assert payload["search_engine"] == "keyword-frequency-v1"
+    assert payload["answer_engine"] == "source-list-v1"
+    assert payload["citations"] == []
     assert payload["sources"] == [
         {
             "document_name": "아이오닉 5 2024 취급설명서",
@@ -174,6 +176,8 @@ def test_worker_marks_document_ready_and_search_returns_sources(
     )
     assert no_match.status_code == 200
     assert no_match.json()["sources"] == []
+    assert no_match.json()["answer_engine"] == "source-list-v1"
+    assert no_match.json()["citations"] == []
     assert "찾지 못했습니다" in no_match.json()["answer"]
 
 
