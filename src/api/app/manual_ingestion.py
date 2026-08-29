@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -297,11 +298,19 @@ def _search_terms(question: str) -> list[str]:
 def search_manual_document(
     database_path: Path, document_key: str, question: str, limit: int
 ) -> list[dict[str, object]]:
+    return rank_manual_chunks(
+        list_manual_chunk_rows(database_path, document_key), question, limit
+    )
+
+
+def rank_manual_chunks(
+    rows: Iterable[Mapping[str, object]], question: str, limit: int
+) -> list[dict[str, object]]:
     terms = _search_terms(question)
     if not terms:
         return []
     ranked: list[tuple[int, int, dict[str, object]]] = []
-    for index, row in enumerate(list_manual_chunk_rows(database_path, document_key)):
+    for index, row in enumerate(rows):
         content = str(row["content"])
         lowered = content.lower()
         score = sum(lowered.count(term) * max(len(term), 2) for term in terms)
