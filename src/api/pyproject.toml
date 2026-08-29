@@ -19,6 +19,11 @@ embedding = [
 generation = [
   "openvino-genai>=2026.3,<2026.4",
 ]
+generation-evaluation = [
+  "huggingface-hub>=1.0,<2.0",
+  "openvino-genai>=2026.3,<2026.4",
+  "psutil>=7.0,<8.0",
+]
 
 [build-system]
 requires = ["hatchling"]
