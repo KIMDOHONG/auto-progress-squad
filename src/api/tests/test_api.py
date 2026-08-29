@@ -431,3 +431,52 @@ def test_schema_v2_migration_preserves_profiles_and_adds_hydrogen(tmp_path: Path
             row[1] for row in connection.execute("PRAGMA table_info(manual_ingestion_jobs)")
         }
         assert {"vehicle_id", "document_key", "status", "source_url"} <= ingestion_columns
+
+
+def test_schema_v8_migration_backfills_chunk_level_source_metadata(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "legacy-manual.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE manual_documents (
+                document_key TEXT PRIMARY KEY,
+                document_name TEXT NOT NULL,
+                source_url TEXT NOT NULL,
+                content_sha256 TEXT NOT NULL,
+                page_count INTEGER NOT NULL,
+                ingested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE manual_chunks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_key TEXT NOT NULL
+                    REFERENCES manual_documents(document_key) ON DELETE CASCADE,
+                page INTEGER,
+                section TEXT,
+                content TEXT NOT NULL
+            );
+            INSERT INTO manual_documents (
+                document_key, document_name, source_url, content_sha256, page_count
+            ) VALUES (
+                'hmc:FE:2021', '넥쏘 2021 취급설명서',
+                'https://ownersmanual.hyundai.com/manual/nexo-2021', 'legacy', 1
+            );
+            INSERT INTO manual_chunks (document_key, page, section, content)
+            VALUES ('hmc:FE:2021', 1, NULL, '기존 매뉴얼 청크');
+            """
+        )
+
+    initialize_database(database_path)
+
+    with sqlite3.connect(database_path) as connection:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(manual_chunks)")
+        }
+        assert {"document_name", "source_url"} <= columns
+        assert connection.execute(
+            "SELECT document_name, source_url FROM manual_chunks"
+        ).fetchone() == (
+            "넥쏘 2021 취급설명서",
+            "https://ownersmanual.hyundai.com/manual/nexo-2021",
+        )

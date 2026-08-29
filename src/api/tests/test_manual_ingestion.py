@@ -10,6 +10,7 @@ from pypdf import PdfWriter
 from app import manual_ingestion
 from app.manual_ingestion import run_pending_ingestion
 from tests.test_api import vehicle_payload, verified_manual_payload
+from tests.test_manual_adapter_catalog import mapping, write_catalog
 
 
 def write_manifest(
@@ -35,6 +36,86 @@ def write_manifest(
                         "document_name": "아이오닉 5 2024 취급설명서",
                         "source_url": "https://ownersmanual.hyundai.com/manual/ioniq5-2024",
                         "file": relative_file,
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def attach_kgm_catalog_vehicle(client: TestClient, vehicle_id: str) -> str:
+    write_catalog(client.app.state.settings.manual_source_dir, [mapping()])
+    response = client.post(
+        "/api/v1/vehicles",
+        json={
+            "id": vehicle_id,
+            "nickname": "테스트 차량",
+            "manufacturer": "KGM",
+            "model": "테스트 SUV",
+            "model_year": 2025,
+            "powertrain": "gasoline",
+            "fuel_grade": "regular",
+        },
+    )
+    assert response.status_code == 201
+    attached = client.post(
+        f"/api/v1/vehicles/{vehicle_id}/manual-adapters/kgm",
+        json={"generation": "T1"},
+    )
+    assert attached.status_code == 200
+    status = client.get(
+        f"/api/v1/vehicles/{vehicle_id}/manual-ingestion"
+    ).json()
+    assert status["status"] == "pending"
+    return str(status["document_key"])
+
+
+def write_chapter_manifest(
+    source_root: Path,
+    document_key: str,
+    *,
+    first_url: str = "https://www.kg-mobility.com/manuals/test/safety.pdf",
+    duplicate_file: bool = False,
+) -> None:
+    source_root.mkdir(parents=True, exist_ok=True)
+    (source_root / "safety.txt").write_text(
+        "에어백 경고등이 켜지면 안전한 장소에 정차하고 점검하십시오.",
+        encoding="utf-8",
+    )
+    (source_root / "driving.txt").write_text(
+        "시동 버튼을 누르기 전에 브레이크 페달을 밟으십시오.",
+        encoding="utf-8",
+    )
+    (source_root / "manifest.json").write_text(
+        json.dumps(
+            {
+                "documents": [
+                    {
+                        "document_key": document_key,
+                        "document_name": "테스트 SUV 2025 취급설명서",
+                        "source_url": (
+                            "https://www.kg-mobility.com/owner-manuals/test"
+                        ),
+                        "chapters": [
+                            {
+                                "title": "안전 주의사항",
+                                "source_url": first_url,
+                                "file": "safety.txt",
+                            },
+                            {
+                                "title": "시동 및 주행",
+                                "source_url": (
+                                    "https://www.kg-mobility.com/manuals/test/driving.pdf"
+                                ),
+                                "file": (
+                                    "nested/../safety.txt"
+                                    if duplicate_file
+                                    else "driving.txt"
+                                ),
+                            },
+                        ],
                     }
                 ]
             },
@@ -94,6 +175,108 @@ def test_worker_marks_document_ready_and_search_returns_sources(
     assert no_match.status_code == 200
     assert no_match.json()["sources"] == []
     assert "찾지 못했습니다" in no_match.json()["answer"]
+
+
+def test_worker_ingests_chapter_bundle_and_preserves_each_official_source(
+    client: TestClient, tmp_path: Path
+) -> None:
+    document_key = attach_kgm_catalog_vehicle(client, "kgm-chapter-bundle")
+    source_root = tmp_path / "manuals"
+    write_chapter_manifest(source_root, document_key)
+
+    result = run_pending_ingestion(
+        client.app.state.settings.database_path, source_root
+    )[0]
+
+    assert result.status == "ready"
+    assert result.chunk_count == 2
+    expected = (
+        (
+            "에어백 경고등",
+            "안전 주의사항",
+            "https://www.kg-mobility.com/manuals/test/safety.pdf",
+        ),
+        (
+            "시동 버튼",
+            "시동 및 주행",
+            "https://www.kg-mobility.com/manuals/test/driving.pdf",
+        ),
+    )
+    for question, section, source_url in expected:
+        response = client.post(
+            "/api/v1/manual/search",
+            json={"vehicle_id": "kgm-chapter-bundle", "question": question},
+        )
+        assert response.status_code == 200
+        source = response.json()["sources"][0]
+        assert source["document_name"] == "테스트 SUV 2025 취급설명서"
+        assert source["source_url"] == source_url
+        assert source["section"] == section
+        assert source["page"] == 1
+
+    with sqlite3.connect(client.app.state.settings.database_path) as connection:
+        assert connection.execute(
+            "SELECT page_count FROM manual_documents WHERE document_key = ?",
+            (document_key,),
+        ).fetchone()[0] == 2
+
+
+def test_chapter_bundle_rejects_non_manufacturer_source_and_duplicate_file(
+    client: TestClient, tmp_path: Path
+) -> None:
+    document_key = attach_kgm_catalog_vehicle(client, "kgm-invalid-host")
+    source_root = tmp_path / "invalid-host"
+    write_chapter_manifest(
+        source_root,
+        document_key,
+        first_url="https://example.com/copied-manual.pdf",
+    )
+
+    invalid_host = run_pending_ingestion(
+        client.app.state.settings.database_path, source_root
+    )[0]
+    assert invalid_host.status == "failed"
+    assert invalid_host.failure_code == "manual_source_not_allowed"
+
+    retry = client.post(
+        "/api/v1/vehicles/kgm-invalid-host/manual-ingestion/retry"
+    )
+    assert retry.status_code == 202
+    write_chapter_manifest(source_root, document_key, duplicate_file=True)
+    duplicate = run_pending_ingestion(
+        client.app.state.settings.database_path, source_root
+    )[0]
+    assert duplicate.status == "failed"
+    assert duplicate.failure_code == "manifest_duplicate_chapter"
+
+
+def test_changed_chapter_atomically_replaces_shared_bundle(
+    client: TestClient, tmp_path: Path
+) -> None:
+    document_key = attach_kgm_catalog_vehicle(client, "kgm-first-bundle")
+    source_root = tmp_path / "manuals"
+    write_chapter_manifest(source_root, document_key)
+    database_path = client.app.state.settings.database_path
+    assert run_pending_ingestion(database_path, source_root)[0].status == "ready"
+
+    assert attach_kgm_catalog_vehicle(client, "kgm-second-bundle") == document_key
+    (source_root / "driving.txt").write_text(
+        "비상 견인 고리는 적재함 공구함에 보관되어 있습니다.", encoding="utf-8"
+    )
+    replaced = run_pending_ingestion(database_path, source_root)[0]
+    assert replaced.status == "ready"
+
+    for vehicle_id in ("kgm-first-bundle", "kgm-second-bundle"):
+        new_search = client.post(
+            "/api/v1/manual/search",
+            json={"vehicle_id": vehicle_id, "question": "비상 견인 고리"},
+        )
+        assert "적재함 공구함" in new_search.json()["sources"][0]["excerpt"]
+        old_search = client.post(
+            "/api/v1/manual/search",
+            json={"vehicle_id": vehicle_id, "question": "시동 버튼"},
+        )
+        assert old_search.json()["sources"] == []
 
 
 def test_worker_failure_is_visible_and_retry_returns_to_pending(

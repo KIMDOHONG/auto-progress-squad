@@ -28,6 +28,8 @@ ALLOWED_MANUAL_HOSTS = {
     "hmc": "ownersmanual.hyundai.com",
     "kia": "ownersmanual.kia.com",
     "genesis": "ownersmanual.genesis.com",
+    "chevrolet": "www.chevrolet.co.kr",
+    "kgm": "www.kg-mobility.com",
 }
 
 
@@ -39,11 +41,26 @@ class ManualIngestionError(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class ManualManifestChapter:
+    title: str
+    source_url: str
+    file: str
+
+
+@dataclass(frozen=True, slots=True)
 class ManualManifestEntry:
     document_key: str
     document_name: str
     source_url: str
-    file: str
+    file: str | None
+    chapters: tuple[ManualManifestChapter, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedManualSource:
+    title: str | None
+    source_url: str
+    file: Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,31 +72,110 @@ class ManualIngestionResult:
     failure_code: str | None = None
 
 
-def _validate_entry(raw_entry: object) -> ManualManifestEntry:
-    if not isinstance(raw_entry, dict):
-        raise ManualIngestionError(
-            "manifest_invalid", "매뉴얼 manifest 항목 형식이 올바르지 않습니다."
-        )
-    required = ("document_key", "document_name", "source_url", "file")
-    values = {key: raw_entry.get(key) for key in required}
-    if not all(isinstance(value, str) and value.strip() for value in values.values()):
-        raise ManualIngestionError(
-            "manifest_invalid", "매뉴얼 manifest 필수 문자열을 확인해 주세요."
-        )
-    entry = ManualManifestEntry(**{key: str(value).strip() for key, value in values.items()})
-    site_id = entry.document_key.partition(":")[0]
+def _validate_source_url(site_id: str, source_url: str) -> None:
     expected_host = ALLOWED_MANUAL_HOSTS.get(site_id)
-    parsed_url = urlsplit(entry.source_url)
+    try:
+        parsed_url = urlsplit(source_url)
+        port = parsed_url.port
+    except ValueError as error:
+        raise ManualIngestionError(
+            "manual_source_not_allowed",
+            "공식 제조사 HTTPS 원문만 매뉴얼 출처로 등록할 수 있습니다.",
+        ) from error
     if (
         expected_host is None
         or parsed_url.scheme != "https"
         or parsed_url.hostname != expected_host
+        or port not in (None, 443)
+        or parsed_url.username is not None
+        or parsed_url.password is not None
     ):
         raise ManualIngestionError(
             "manual_source_not_allowed",
             "공식 제조사 HTTPS 원문만 매뉴얼 출처로 등록할 수 있습니다.",
         )
-    return entry
+
+
+def _validate_entry(raw_entry: object) -> ManualManifestEntry:
+    if not isinstance(raw_entry, dict):
+        raise ManualIngestionError(
+            "manifest_invalid", "매뉴얼 manifest 항목 형식이 올바르지 않습니다."
+        )
+    required = ("document_key", "document_name", "source_url")
+    values = {key: raw_entry.get(key) for key in required}
+    if not all(isinstance(value, str) and value.strip() for value in values.values()):
+        raise ManualIngestionError(
+            "manifest_invalid", "매뉴얼 manifest 필수 문자열을 확인해 주세요."
+        )
+    normalized = {key: str(value).strip() for key, value in values.items()}
+    site_id = normalized["document_key"].partition(":")[0]
+    _validate_source_url(site_id, normalized["source_url"])
+
+    file_value = raw_entry.get("file")
+    chapters_value = raw_entry.get("chapters")
+    if "file" in raw_entry and not (
+        isinstance(file_value, str) and file_value.strip()
+    ):
+        raise ManualIngestionError(
+            "manifest_invalid", "매뉴얼 file은 비어 있지 않은 문자열이어야 합니다."
+        )
+    if "chapters" in raw_entry and not (
+        isinstance(chapters_value, list) and chapters_value
+    ):
+        raise ManualIngestionError(
+            "manifest_invalid", "매뉴얼 chapters는 비어 있지 않은 목록이어야 합니다."
+        )
+    has_file = isinstance(file_value, str) and bool(file_value.strip())
+    has_chapters = isinstance(chapters_value, list) and bool(chapters_value)
+    if has_file == has_chapters:
+        raise ManualIngestionError(
+            "manifest_invalid",
+            "매뉴얼 항목에는 단일 file 또는 chapters 목록 중 하나만 필요합니다.",
+        )
+
+    chapters: list[ManualManifestChapter] = []
+    seen_files: set[str] = set()
+    seen_urls: set[str] = set()
+    if has_chapters:
+        assert isinstance(chapters_value, list)
+        for raw_chapter in chapters_value:
+            if not isinstance(raw_chapter, dict):
+                raise ManualIngestionError(
+                    "manifest_invalid", "매뉴얼 chapters 항목 형식을 확인해 주세요."
+                )
+            chapter_values = {
+                key: raw_chapter.get(key) for key in ("title", "source_url", "file")
+            }
+            if not all(
+                isinstance(value, str) and value.strip()
+                for value in chapter_values.values()
+            ):
+                raise ManualIngestionError(
+                    "manifest_invalid", "매뉴얼 chapters 필수 문자열을 확인해 주세요."
+                )
+            title = str(chapter_values["title"]).strip()
+            source_url = str(chapter_values["source_url"]).strip()
+            relative_file = str(chapter_values["file"]).strip()
+            _validate_source_url(site_id, source_url)
+            if source_url in seen_urls or relative_file in seen_files:
+                raise ManualIngestionError(
+                    "manifest_duplicate_chapter",
+                    "같은 장의 원문 URL이나 로컬 파일을 중복 등록할 수 없습니다.",
+                )
+            seen_urls.add(source_url)
+            seen_files.add(relative_file)
+            chapters.append(
+                ManualManifestChapter(
+                    title=title, source_url=source_url, file=relative_file
+                )
+            )
+    return ManualManifestEntry(
+        document_key=normalized["document_key"],
+        document_name=normalized["document_name"],
+        source_url=normalized["source_url"],
+        file=str(file_value).strip() if has_file else None,
+        chapters=tuple(chapters),
+    )
 
 
 def load_manifest(source_root: Path) -> dict[str, ManualManifestEntry]:
@@ -134,6 +230,61 @@ def _resolve_source_file(source_root: Path, relative_file: str) -> Path:
     return candidate
 
 
+def _resolve_entry_sources(
+    source_root: Path, entry: ManualManifestEntry
+) -> tuple[ResolvedManualSource, ...]:
+    if entry.file is not None:
+        return (
+            ResolvedManualSource(
+                title=None,
+                source_url=entry.source_url,
+                file=_resolve_source_file(source_root, entry.file),
+            ),
+        )
+    sources = tuple(
+        ResolvedManualSource(
+            title=chapter.title,
+            source_url=chapter.source_url,
+            file=_resolve_source_file(source_root, chapter.file),
+        )
+        for chapter in entry.chapters
+    )
+    if len({source.file for source in sources}) != len(sources):
+        raise ManualIngestionError(
+            "manifest_duplicate_chapter",
+            "같은 로컬 파일을 여러 장으로 중복 등록할 수 없습니다.",
+        )
+    return sources
+
+
+def _content_sha256(sources: tuple[ResolvedManualSource, ...]) -> str:
+    digest = hashlib.sha256()
+    total_bytes = 0
+    try:
+        for source in sources:
+            digest.update((source.title or "").encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(source.source_url.encode("utf-8"))
+            digest.update(b"\0")
+            with source.file.open("rb") as stream:
+                while block := stream.read(1024 * 1024):
+                    total_bytes += len(block)
+                    if total_bytes > MAX_MANUAL_BYTES:
+                        raise ManualIngestionError(
+                            "manual_file_too_large",
+                            "매뉴얼 파일 묶음이 허용된 총 100MB를 초과했습니다.",
+                        )
+                    digest.update(block)
+            digest.update(b"\0")
+    except ManualIngestionError:
+        raise
+    except OSError as error:
+        raise ManualIngestionError(
+            "manual_file_read_failed", "매뉴얼 파일을 다시 읽을 수 없습니다."
+        ) from error
+    return digest.hexdigest()
+
+
 def _extract_pages(source_file: Path) -> list[tuple[int, str]]:
     if source_file.suffix.lower() == ".txt":
         try:
@@ -162,7 +313,9 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"[ \t]+", " ", re.sub(r"\r\n?", "\n", text)).strip()
 
 
-def _chunk_page(page: int, text: str) -> list[dict[str, object]]:
+def _chunk_page(
+    page: int, text: str, *, section: str | None = None
+) -> list[dict[str, object]]:
     normalized = _normalize_text(text)
     if not normalized:
         return []
@@ -180,16 +333,30 @@ def _chunk_page(page: int, text: str) -> list[dict[str, object]]:
                 end = boundary + 1
         content = normalized[start:end].strip()
         if content:
-            chunks.append({"page": page, "section": None, "content": content})
+            chunks.append({"page": page, "section": section, "content": content})
         if end >= len(normalized):
             break
         start = max(end - CHUNK_OVERLAP_CHARACTERS, start + 1)
     return chunks
 
 
-def _extract_chunks(source_file: Path) -> tuple[list[dict[str, object]], int]:
+def _extract_chunks(
+    source_file: Path,
+    *,
+    document_name: str | None = None,
+    source_url: str | None = None,
+    section: str | None = None,
+) -> tuple[list[dict[str, object]], int]:
     pages = _extract_pages(source_file)
-    chunks = [chunk for page, text in pages for chunk in _chunk_page(page, text)]
+    chunks = [
+        {
+            **chunk,
+            **({"document_name": document_name} if document_name else {}),
+            **({"source_url": source_url} if source_url else {}),
+        }
+        for page, text in pages
+        for chunk in _chunk_page(page, text, section=section)
+    ]
     if not chunks:
         raise ManualIngestionError(
             "manual_text_empty", "매뉴얼에서 검색 가능한 텍스트를 추출하지 못했습니다."
@@ -213,13 +380,8 @@ def ingest_vehicle_manual(
             raise ManualIngestionError(
                 "manifest_entry_missing", "현재 차량의 문서 키가 manifest에 없습니다."
             )
-        source_file = _resolve_source_file(source_root, entry.file)
-        try:
-            content_sha256 = hashlib.sha256(source_file.read_bytes()).hexdigest()
-        except OSError as error:
-            raise ManualIngestionError(
-                "manual_file_read_failed", "매뉴얼 파일을 다시 읽을 수 없습니다."
-            ) from error
+        sources = _resolve_entry_sources(source_root, entry)
+        content_sha256 = _content_sha256(sources)
         reused_chunk_count = reuse_manual_document(
             database_path,
             vehicle_id=vehicle_id,
@@ -235,7 +397,17 @@ def ingest_vehicle_manual(
                 status="ready",
                 chunk_count=reused_chunk_count,
             )
-        chunks, page_count = _extract_chunks(source_file)
+        chunks: list[dict[str, object]] = []
+        page_count = 0
+        for source in sources:
+            source_chunks, source_page_count = _extract_chunks(
+                source.file,
+                document_name=entry.document_name,
+                source_url=source.source_url,
+                section=source.title,
+            )
+            chunks.extend(source_chunks)
+            page_count += source_page_count
         replace_manual_document(
             database_path,
             vehicle_id=vehicle_id,

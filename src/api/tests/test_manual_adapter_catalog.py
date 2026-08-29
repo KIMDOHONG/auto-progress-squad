@@ -230,7 +230,13 @@ def test_exact_catalog_mapping_attaches_to_vehicle_without_guessing_image(
     ingestion = client.get(
         "/api/v1/vehicles/kgm-test/manual-ingestion"
     ).json()
-    assert ingestion["status"] == "unavailable"
+    assert ingestion["status"] == "pending"
+    assert ingestion["document_key"] == (
+        "kgm:catalog:%ED%85%8C%EC%8A%A4%ED%8A%B8%20suv:2025:t1"
+    )
+    assert ingestion["source_url"] == (
+        "https://www.kg-mobility.com/owner-manuals/test"
+    )
 
 
 def test_catalog_attachment_returns_generation_choices_before_exact_selection(
