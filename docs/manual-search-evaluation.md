@@ -48,3 +48,7 @@ uv run --locked python -m app.manual_search_evaluation `
 3. 동의어 실패 2개가 개선되는지 확인합니다.
 4. 모델명·버전·라이선스·실행 장치와 평균 검색 시간을 함께 기록합니다.
 5. 실제 서비스 적용 판단 전에는 이용이 승인된 더 큰 문서 집합과 질문 세트로 다시 측정합니다.
+
+## OpenVINO 후보 측정
+
+실제 로컬 CPU 측정 결과와 모델 선택 근거는 [매뉴얼 임베딩 후보 비교](../models/manual-embedding-candidates.md)에 기록했습니다. 현재 8문항에서는 `multilingual-e5-small`이 모두 1순위로 검색됐지만, 이 결과만으로 실제 설명서 전체 품질을 확정하지 않습니다.
