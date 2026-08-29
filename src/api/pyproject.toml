@@ -16,6 +16,9 @@ test = [
 embedding = [
   "sentence-transformers[openvino]>=6.0,<7.0",
 ]
+generation = [
+  "openvino-genai>=2026.3,<2026.4",
+]
 
 [build-system]
 requires = ["hatchling"]

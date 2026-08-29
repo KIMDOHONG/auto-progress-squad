@@ -134,6 +134,37 @@ def test_manual_search_settings_reject_invalid_values(
         Settings.from_env()
 
 
+@pytest.mark.parametrize(
+    ("name", "value", "message"),
+    [
+        ("APS_MANUAL_ANSWER_MODE", "automatic", "APS_MANUAL_ANSWER_MODE"),
+        (
+            "APS_MANUAL_GENERATION_DEVICE",
+            "   ",
+            "APS_MANUAL_GENERATION_DEVICE",
+        ),
+        (
+            "APS_MANUAL_GENERATION_MAX_NEW_TOKENS",
+            "0",
+            "APS_MANUAL_GENERATION_MAX_NEW_TOKENS",
+        ),
+        (
+            "APS_MANUAL_GROUNDING_MIN_TOKEN_OVERLAP",
+            "1.1",
+            "APS_MANUAL_GROUNDING_MIN_TOKEN_OVERLAP",
+        ),
+    ],
+)
+def test_manual_answer_settings_reject_invalid_values(
+    monkeypatch, tmp_path: Path, name: str, value: str, message: str
+) -> None:
+    monkeypatch.setenv("APS_DATABASE_PATH", str(tmp_path / "settings.db"))
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ValueError, match=message):
+        Settings.from_env()
+
+
 def test_vehicle_mutation_methods_are_allowed_by_cors(client: TestClient) -> None:
     for method in ("PUT", "DELETE"):
         response = client.options(
