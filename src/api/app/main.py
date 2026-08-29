@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import Settings
 from .database import initialize_database
 from .errors import install_error_handlers
+from .manual_embedding_search import EmbeddingManualSearcher
 from .routes import router
 
 
@@ -19,6 +20,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         initialize_database(resolved_settings.database_path)
         app.state.settings = resolved_settings
+        app.state.manual_embedding_search = (
+            EmbeddingManualSearcher(
+                model_name=resolved_settings.manual_embedding_model,
+                revision=resolved_settings.manual_embedding_revision,
+                model_file=resolved_settings.manual_embedding_file,
+                min_score=resolved_settings.manual_embedding_min_score,
+            )
+            if resolved_settings.manual_search_mode == "embedding"
+            else None
+        )
         yield
 
     application = FastAPI(
