@@ -52,3 +52,5 @@ uv run --locked python -m app.manual_search_evaluation `
 ## OpenVINO 후보 측정
 
 실제 로컬 CPU 측정 결과와 모델 선택 근거는 [매뉴얼 임베딩 후보 비교](../models/manual-embedding-candidates.md)에 기록했습니다. 현재 8문항에서는 `multilingual-e5-small`이 모두 1순위로 검색됐지만, 이 결과만으로 실제 설명서 전체 품질을 확정하지 않습니다.
+
+서버 검색은 호환성을 위해 기본 `keyword` 모드를 유지하며, `APS_MANUAL_SEARCH_MODE=embedding`을 지정한 검증 환경에서만 선택 후보를 사용합니다. 모델 오류를 키워드 성공으로 숨기지 않으며, 최소 점수와 실제 사용 엔진을 응답에서 확인할 수 있습니다.

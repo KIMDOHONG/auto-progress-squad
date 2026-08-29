@@ -185,6 +185,7 @@ class ManualSource(BaseModel):
 class ManualSearchResponse(BaseModel):
     answer: str
     sources: list[ManualSource]
+    search_engine: Literal["keyword-frequency-v1", "openvino-embedding-v1"]
     generated_at: str
 
 

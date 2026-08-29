@@ -172,6 +172,18 @@ uv run fastapi dev
 
 로컬 OpenVINO 임베딩 후보의 설치·실측 결과·라이선스·선택 근거는 [매뉴얼 임베딩 후보 비교](models/manual-embedding-candidates.md)를 참고하세요. 모델 가중치는 Git에 포함하지 않으며 `uv sync --locked --extra embedding`을 실행한 개발 환경의 Hugging Face 캐시에만 저장합니다.
 
+기본 검색 모드는 기존 `keyword`입니다. 검증 서버에서 E5 OpenVINO 의미 검색을 명시적으로 사용할 때만 다음과 같이 실행합니다.
+
+```powershell
+cd src/api
+uv sync --locked --extra test --extra embedding
+$env:APS_MANUAL_SEARCH_MODE = "embedding"
+$env:APS_MANUAL_EMBEDDING_MIN_SCORE = "0.82"
+uv run fastapi dev
+```
+
+임베딩 모드는 모델을 처음 검색할 때 지연 로드하고, 문서 내용 지문별 벡터를 메모리에 최대 4개까지 보관합니다. 모델 의존성·가중치·추론 중 하나라도 준비되지 않으면 키워드 검색으로 자동 대체하지 않고 `503 manual_embedding_unavailable`을 반환합니다. 응답의 `search_engine`은 실제 사용한 `keyword-frequency-v1` 또는 `openvino-embedding-v1`을 표시합니다. 배포 결정과 실패 폐쇄 원칙은 [ADR-0005](docs/decisions/0005-use-opt-in-openvino-embedding-search.md)를 따릅니다.
+
 현재 백엔드는 차량 프로필 CRUD·활성 차량 전환, 차량별 매뉴얼 준비 상태·재시도, 승인된 PDF/TXT 추출·청크 저장과 출처 검색을 제공합니다. 프런트엔드의 공식 취급설명서 링크는 제조사 원문을 새 탭으로 열며, `ready` 상태에서는 현재 차량 문서만 질문할 수 있습니다. 정확한 문서가 없거나 준비 중이면 `409`, 준비 실패나 상태·인덱스 불일치는 `503`으로 구분합니다. 검색 결과는 문서명·페이지·공식 원문 URL·발췌문이며 LLM이 재작성한 정비 답변은 아닙니다.
 
 쉐보레·KGM의 모델별 장 목록은 제조사 사이트를 자동 수집하지 않습니다. 서버 관리자가 이용 조건과 정확한 차명·연식·세대를 확인한 뒤 `APS_MANUAL_SOURCE_DIR`의 `adapter-manifest.json`에 승인한 매핑만 조회합니다. API 모드의 취급설명서 화면에서 정확한 단일 매핑을 프로필에 연결할 수 있으며, 이미지 사용 권한을 확인하기 전까지 해당 프로필에는 제조사 이미지를 저장하지 않습니다. 같은 차명·연식에 여러 세대가 있으면 승인 manifest의 세대·문서명·출처 확인일만 후보로 표시하고, 사용자가 한 세대를 명시적으로 고른 뒤 연결합니다. 첫 후보를 자동 선택하거나 다른 연식 문서로 대체하지 않습니다. 상세 형식과 정책은 [ADR-0004](docs/decisions/0004-use-approved-manual-adapter-catalog.md)를 참고하세요.
@@ -181,7 +193,7 @@ uv run fastapi dev
 ## 다음 진행 순서
 
 1. **제조사 매뉴얼 어댑터 확장**: [Issue #17](https://github.com/KIMDOHONG/auto-progress-squad/issues/17)의 공통 계약과 BMW VIN 보호 경계 뒤에, 사용 조건이 확인된 제조사부터 정확한 모델·연식 식별을 연결
-2. **검색 품질 평가와 인덱스 고도화**: 현재 키워드 검색을 평가 질문 세트로 측정하고 임베딩·벡터 검색 적용 여부 결정
+2. **검색 품질 평가와 인덱스 고도화**: 선택형 OpenVINO 임베딩 검색을 승인된 실제 문서·확장 질문 세트로 재평가하고 영속 벡터 인덱스 적용 여부 결정
 3. **생성형 매뉴얼 답변 연결**: 검색된 문서 위치와 출처를 벗어나지 않는 LLM 답변 및 인용 검증 구현
 4. **리콜 API 연결**: [Issue #19](https://github.com/KIMDOHONG/auto-progress-squad/issues/19)의 활성 차량 기준 리콜 조회 구현
 5. **외부 경로 API 연결**: EV·수소·내연기관별 충전소/주유소와 경로 계산을 실제 데이터로 교체

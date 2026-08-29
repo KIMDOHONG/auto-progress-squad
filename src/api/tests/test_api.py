@@ -1,8 +1,10 @@
 import sqlite3
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
+from app.config import Settings
 from app.database import initialize_database
 
 
@@ -115,6 +117,21 @@ def test_pages_origin_is_allowed_by_cors(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "https://kimdohong.github.io"
+
+
+def test_manual_search_settings_reject_invalid_values(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("APS_DATABASE_PATH", str(tmp_path / "settings.db"))
+    monkeypatch.setenv("APS_MANUAL_SEARCH_MODE", "automatic")
+
+    with pytest.raises(ValueError, match="APS_MANUAL_SEARCH_MODE"):
+        Settings.from_env()
+
+    monkeypatch.setenv("APS_MANUAL_SEARCH_MODE", "embedding")
+    monkeypatch.setenv("APS_MANUAL_EMBEDDING_MIN_SCORE", "1.1")
+    with pytest.raises(ValueError, match="APS_MANUAL_EMBEDDING_MIN_SCORE"):
+        Settings.from_env()
 
 
 def test_vehicle_mutation_methods_are_allowed_by_cors(client: TestClient) -> None:
