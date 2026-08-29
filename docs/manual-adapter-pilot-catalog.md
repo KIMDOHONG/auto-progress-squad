@@ -49,9 +49,16 @@ Invoke-RestMethod -Method Post `
 
 인접 연식이나 다른 세대는 `404 manual_mapping_not_found`가 정상입니다.
 
+## 장별 파일 수집
+
+정확한 승인 매핑을 차량에 연결하면 API 모드에서 해당 차량의 매뉴얼 준비 상태가 `pending`이 됩니다. 앱은 제조사 PDF를 자동으로 내려받지 않습니다. 운영자가 이용 조건을 확인한 뒤 각 장 파일을 `APS_MANUAL_SOURCE_DIR` 안에 직접 준비하고, [장별 매뉴얼 manifest 예시](examples/manual-manifest.chapter-bundle.example.json)를 `manifest.json`의 출발점으로 사용해야 합니다.
+
+예시의 `document_key`는 `2023 토레스(J100)` 승인 매핑에만 해당합니다. 실제 작업 전 `GET /api/v1/vehicles/{vehicle_id}/manual-ingestion` 응답의 키와 정확히 같은지 확인합니다. 작업이 완료되면 각 검색 결과는 전체 문서의 대표 URL 대신 근거가 나온 장의 제목·페이지·공식 PDF URL을 반환합니다.
+
 ## 미완료 범위
 
 - 쉐보레 페이지는 차량 연식을 선택값으로 제공하지 않으므로 다른 차종·연식은 별도 공식 근거가 필요합니다.
 - KGM의 설명서 발행월을 차량 연식으로 자동 변환하지 않습니다.
 - 제조사 페이지를 주기적으로 수집하지 않으며 PDF와 원 API 응답을 저장소에 커밋하지 않습니다.
+- 이 저장소의 장별 manifest는 로컬 파일 배치 형식만 설명하며, 원문 다운로드·복제 권한을 부여하지 않습니다.
 - 실제 서비스에 배치하기 전 운영자가 제조사 이용 조건과 링크 상태를 다시 확인해야 합니다.

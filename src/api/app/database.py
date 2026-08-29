@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 class VehicleLimitReachedError(Exception):
@@ -179,6 +179,8 @@ def initialize_database(database_path: Path) -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 document_key TEXT NOT NULL
                     REFERENCES manual_documents(document_key) ON DELETE CASCADE,
+                document_name TEXT,
+                source_url TEXT,
                 page INTEGER,
                 section TEXT,
                 content TEXT NOT NULL
@@ -186,6 +188,31 @@ def initialize_database(database_path: Path) -> None:
 
             CREATE INDEX IF NOT EXISTS idx_manual_chunks_document_key
             ON manual_chunks(document_key);
+            """
+        )
+        chunk_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(manual_chunks)").fetchall()
+        }
+        for column_name in ("document_name", "source_url"):
+            if column_name not in chunk_columns:
+                connection.execute(
+                    f"ALTER TABLE manual_chunks ADD COLUMN {column_name} TEXT"
+                )
+        connection.execute(
+            """
+            UPDATE manual_chunks
+            SET document_name = COALESCE(
+                    document_name,
+                    (SELECT document_name FROM manual_documents
+                     WHERE document_key = manual_chunks.document_key)
+                ),
+                source_url = COALESCE(
+                    source_url,
+                    (SELECT source_url FROM manual_documents
+                     WHERE document_key = manual_chunks.document_key)
+                )
+            WHERE document_name IS NULL OR source_url IS NULL
             """
         )
         connection.execute(
@@ -199,7 +226,19 @@ def _manual_document_identity(values: dict[str, object]) -> tuple[str, str] | No
     model_name = values.get("manual_model_name")
     project_code = values.get("manual_project_code")
     model_year = values.get("manual_model_year")
-    if not all((site_id, model_name, project_code, model_year)):
+    if not all((site_id, model_name, model_year)):
+        return None
+    if site_id in {"chevrolet", "kgm"}:
+        generation = values.get("manual_generation")
+        source_url = values.get("manual_source_url")
+        if not all((generation, source_url)):
+            return None
+        document_key = (
+            f"{site_id}:catalog:{quote(str(model_name).strip().casefold(), safe='')}:"
+            f"{model_year}:{quote(str(generation).strip().casefold(), safe='')}"
+        )
+        return document_key, str(source_url)
+    if not project_code:
         return None
     domains = {
         "hmc": "ownersmanual.hyundai.com",
@@ -513,10 +552,21 @@ def replace_manual_document(
         )
         connection.executemany(
             """
-            INSERT INTO manual_chunks (document_key, page, section, content)
-            VALUES (:document_key, :page, :section, :content)
+            INSERT INTO manual_chunks (
+                document_key, document_name, source_url, page, section, content
+            ) VALUES (
+                :document_key, :document_name, :source_url, :page, :section, :content
+            )
             """,
-            ({**chunk, "document_key": document_key} for chunk in chunks),
+            (
+                {
+                    **chunk,
+                    "document_key": document_key,
+                    "document_name": chunk.get("document_name", document_name),
+                    "source_url": chunk.get("source_url", source_url),
+                }
+                for chunk in chunks
+            ),
         )
         connection.execute(
             """
@@ -643,11 +693,13 @@ def list_manual_chunk_rows(
     with connect(database_path) as connection:
         return connection.execute(
             """
-            SELECT d.document_name, d.source_url, c.page, c.section, c.content
+            SELECT COALESCE(c.document_name, d.document_name) AS document_name,
+                   COALESCE(c.source_url, d.source_url) AS source_url,
+                   c.page, c.section, c.content
             FROM manual_chunks AS c
             JOIN manual_documents AS d USING (document_key)
             WHERE c.document_key = ?
-            ORDER BY c.page, c.id
+            ORDER BY c.id
             """,
             (document_key,),
         ).fetchall()
