@@ -49,6 +49,7 @@ export interface OfficialVehicleSearchResult {
 const REQUEST_TIMEOUT_MS = 8_000;
 const catalogCache = new Map<OfficialManualSiteId, Promise<CatalogModel[]>>();
 const detailCache = new Map<string, Promise<DetailResponse>>();
+const CONNECTED_MANUAL_SITE_IDS = new Set<OfficialManualSiteId>(["hmc", "kia", "genesis"]);
 const REGISTRATION_WORDS = /(자동차|차량|내\s*차|프로필|등록|추가|저장|해\s*줘|해주세요|해줘|시켜줘|부탁해|입니다|이에요|예요)/gi;
 const BRAND_ALIASES: Array<{
   pattern: RegExp;
@@ -89,7 +90,7 @@ function normalize(value: string): string {
 }
 
 function officialBrands(manufacturer?: string): ManualBrandSource[] {
-  if (!manufacturer) return MANUAL_BRANDS;
+  if (!manufacturer) return MANUAL_BRANDS.filter((brand) => CONNECTED_MANUAL_SITE_IDS.has(brand.siteId));
   return MANUAL_BRANDS.filter((brand) => normalize(brand.manufacturer) === normalize(manufacturer));
 }
 
