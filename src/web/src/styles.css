@@ -154,12 +154,16 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .planner-symbol.hydrogen { background: #dff7f5; color: #087f78; }
 .planner-symbol.fuel { background: #ffead5; color: #c45a08; }
 .planner-form { border-bottom: 1px solid var(--line); padding-bottom: 24px; }
+.planner-mode-note { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 16px; border-radius: 11px; background: #eef4ff; padding: 11px 13px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.planner-mode-note strong { color: var(--blue); white-space: nowrap; }
 .form-grid { display: grid; gap: 14px; }
-.route-inputs { grid-template-columns: 1.3fr 1.3fr .8fr 1fr; }
+.route-inputs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .form-grid label, .vehicle-form label { position: relative; display: grid; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 800; }
 .form-grid input, .form-grid select, .vehicle-form input, .vehicle-form select { min-width: 0; height: 44px; border: 1px solid #cad6e5; border-radius: 11px; background: white; padding: 0 12px; color: var(--ink); font-size: 13px; font-weight: 600; }
 .input-suffix { position: absolute; right: 11px; bottom: 14px; color: var(--muted); font-size: 10px; font-weight: 700; }
 .planner-form .primary-button { margin-top: 16px; }
+.planner-errors { margin-top: 14px; border: 1px solid #f3b5b0; border-radius: 11px; background: #fff4f3; padding: 11px 13px; color: #b42318; font-size: 11px; line-height: 1.5; }
+.planner-errors ul { margin: 5px 0 0; padding-left: 18px; }
 .primary-button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 11px; background: var(--blue); color: white; padding: 0 18px; font-size: 13px; font-weight: 800; }
 .primary-button svg { width: 17px; }
 .primary-button:disabled, .secondary-button:disabled, .text-button:disabled, .vehicle-row-main:disabled { cursor: wait; opacity: .58; }
@@ -177,10 +181,23 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .planner-results { border: 1px solid var(--line); border-radius: 18px; padding: 20px; display: flex; flex-direction: column; }
 .result-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 14px; font-size: 11px; }
 .demo-badge { color: #9a5b03; background: #fff2cd; padding: 6px 8px; border-radius: 8px; font-weight: 800; }
+.local-badge { color: #175cd3; background: #e8f0ff; padding: 6px 8px; border-radius: 8px; font-weight: 800; }
+.planner-decision { display: grid; gap: 6px; margin-top: 16px; border: 1px solid #a7ddc9; border-radius: 12px; background: #f0fdf7; padding: 13px; }
+.planner-decision.stop-required { border-color: #f0cf8b; background: #fff9eb; }
+.planner-decision span { color: var(--green); font-size: 10px; font-weight: 900; }
+.planner-decision.stop-required span { color: #a85c00; }
+.planner-decision strong { font-size: 12px; line-height: 1.5; }
 .result-body dl { margin: 16px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .result-body dl div { border-radius: 11px; background: var(--panel); padding: 12px; }
 .result-body dt { color: var(--muted); font-size: 9px; }
 .result-body dd { margin: 5px 0 0; font-size: 15px; font-weight: 800; }
+.calculation-breakdown { border: 1px solid var(--line); border-radius: 12px; background: white; padding: 13px; }
+.calculation-breakdown > strong { font-size: 11px; }
+.calculation-breakdown ul { display: grid; gap: 6px; margin: 9px 0 0; padding-left: 17px; color: var(--muted); font-size: 9px; line-height: 1.55; }
+.external-data-notice { display: grid; gap: 5px; margin-top: 12px; border-radius: 12px; background: #fff8e8; padding: 12px; }
+.external-data-notice strong { color: #9a5b03; font-size: 10px; }
+.external-data-notice span { color: var(--muted); font-size: 9px; line-height: 1.5; }
+.result-placeholder { margin: 18px 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .station-result { display: flex; align-items: flex-start; gap: 10px; border: 1px solid #a7ddc9; border-radius: 12px; padding: 12px; margin-top: 9px; }
 .station-result svg { width: 20px; flex: 0 0 auto; color: var(--green); }
 .station-result div { display: grid; gap: 5px; }

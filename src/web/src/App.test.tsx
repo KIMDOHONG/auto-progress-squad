@@ -23,7 +23,10 @@ describe("vehicle-aware planner", () => {
     fireEvent.click(plannerButtons[0]);
     expect(screen.getByRole("heading", { name: "수소 충전·주행 플래너" })).toBeInTheDocument();
     expect(screen.getByDisplayValue("수소")).toBeInTheDocument();
-    expect(screen.getByText("경로 수소충전소 A")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "로컬 계산 실행" }));
+    const result = within(screen.getByLabelText("로컬 플래너 계산 결과"));
+    expect(result.getByText("수소 충전 없이 도착 가능")).toBeInTheDocument();
+    expect(result.getByText(/수소충전소 위치·운영 상태·대기 현황 관련 정보는 결과에 포함하지 않았습니다/)).toBeInTheDocument();
   });
 
   it("switches to the EV planner for the ELECTRIFIED GV70 profile", async () => {
@@ -32,7 +35,27 @@ describe("vehicle-aware planner", () => {
     const plannerButtons = await screen.findAllByRole("button", { name: /EV 충전 플래너/ });
     expect(plannerButtons).toHaveLength(2);
     fireEvent.click(plannerButtons[0]);
-    expect(screen.getByLabelText("목적지")).toHaveValue("대한상공회의소 부산인력개발원");
+    expect(screen.getByLabelText(/목적지 메모/)).toHaveValue("대한상공회의소 부산인력개발원");
+    expect(screen.getByLabelText(/사용 가능 배터리 용량/)).toHaveValue(84);
+    fireEvent.change(screen.getByLabelText(/경로 거리/), { target: { value: "250" } });
+    fireEvent.click(screen.getByRole("button", { name: "로컬 계산 실행" }));
+    const result = within(screen.getByLabelText("로컬 플래너 계산 결과"));
+    expect(result.getByText("충전 필요")).toBeInTheDocument();
+    expect(result.getByText("22.1 kWh")).toBeInTheDocument();
+  });
+
+  it("shows planner validation errors without presenting a completed result", async () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("활성 차량"), { target: { value: "sample-electrified-gv70" } });
+    fireEvent.click((await screen.findAllByRole("button", { name: /EV 충전 플래너/ }))[0]);
+    fireEvent.change(screen.getByLabelText(/경로 거리/), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText(/최근 전비/), { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "로컬 계산 실행" }));
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("경로 거리는 0보다 큰 값이어야 합니다.");
+    expect(alert).toHaveTextContent("전비는 0보다 큰 값이어야 합니다.");
+    expect(within(screen.getByLabelText("로컬 플래너 계산 결과")).queryByText("계산 완료")).not.toBeInTheDocument();
   });
 
   it("switches to the fuel planner for a combustion vehicle", async () => {
@@ -41,7 +64,13 @@ describe("vehicle-aware planner", () => {
     const plannerButtons = await screen.findAllByRole("button", { name: /주유 경로 플래너/ });
     expect(plannerButtons).toHaveLength(2);
     fireEvent.click(plannerButtons[0]);
-    expect(await screen.findByText("BMW M3 · 2021 · 고급 휘발유 우선 검색")).toBeInTheDocument();
+    expect(await screen.findByText("BMW M3 · 2021 · 고급 휘발유 기준")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/경로 거리/), { target: { value: "180" } });
+    fireEvent.click(screen.getByRole("button", { name: "로컬 계산 실행" }));
+    const result = within(screen.getByLabelText("로컬 플래너 계산 결과"));
+    expect(result.getByText("주유 필요")).toBeInTheDocument();
+    expect(result.getByText(/최소 60 km의 추가 주행가능거리/)).toBeInTheDocument();
+    expect(result.getByText("고급 휘발유")).toBeInTheDocument();
   });
 
   it("edits an existing vehicle profile", async () => {
