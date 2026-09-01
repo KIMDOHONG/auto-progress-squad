@@ -238,6 +238,32 @@ describe("vehicle-aware planner", () => {
     expect(screen.getByText(/주말 차량 · BMW M3 · 2021 프로필을 삭제했습니다/)).toBeInTheDocument();
   });
 
+  it("uses the active vehicle for a generic recall request", async () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "내 차 리콜 확인해줘" } });
+    fireEvent.click(screen.getByRole("button", { name: "메시지 전송" }));
+
+    expect(await screen.findByText(/현재 활성 차량인 가족 수소차 · 현대 넥쏘 · 2021 프로필을 리콜 조회 대상으로 확인했습니다/)).toBeInTheDocument();
+  });
+
+  it("uses an explicitly named registered vehicle instead of the active vehicle for recall", async () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "2021 BMW M3 리콜 확인" } });
+    fireEvent.click(screen.getByRole("button", { name: "메시지 전송" }));
+
+    expect(await screen.findByText(/질문에 명시한 등록 차량인 주말 차량 · BMW M3 · 2021 프로필을 리콜 조회 대상으로 확인했습니다/)).toBeInTheDocument();
+    expect(screen.queryByText(/현대 넥쏘 · 2021 프로필을 리콜 조회 대상으로/)).not.toBeInTheDocument();
+  });
+
+  it("does not substitute the active vehicle when an explicit recall vehicle is not registered", async () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "2025 K5 리콜" } });
+    fireEvent.click(screen.getByRole("button", { name: "메시지 전송" }));
+
+    expect(await screen.findByText(/‘2025 K5’ 차량과 일치하는 등록 프로필을 찾지 못했습니다/)).toBeInTheDocument();
+    expect(screen.queryByText(/현대 넥쏘 · 2021 프로필을 리콜 조회 대상으로/)).not.toBeInTheDocument();
+  });
+
   it("explains that BMW was recognized but its manual was not searched", async () => {
     render(<App />);
     fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "2015 BMW M3 등록" } });
