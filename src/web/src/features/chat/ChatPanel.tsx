@@ -8,7 +8,8 @@ import {
 } from "../../lib/officialVehicle";
 import { resolveRecallTarget } from "../../lib/recallTarget";
 import { FUEL_GRADE_LABELS, POWERTRAIN_LABELS, getVehicleTitle } from "../../lib/vehicle";
-import type { AppView, FuelGrade, Powertrain, VehicleProfile } from "../../types";
+import { getApiRecalls, VehicleApiError } from "../../lib/vehicleApi";
+import type { AppView, FuelGrade, Powertrain, RecallLookupResult, VehicleProfile } from "../../types";
 
 const VIEW_LABELS: Record<AppView, string> = {
   dashboard: "대시보드",
@@ -85,14 +86,22 @@ interface DeletionConfirmationMessage {
   target: VehicleProfile;
 }
 
+interface RecallResultMessage {
+  id: string;
+  kind: "recall-result";
+  role: "assistant";
+  result: RecallLookupResult;
+}
+
 type Message = TextMessage | LinkMessage | CandidateMessage | ConfirmationMessage
   | ReplacementChoiceMessage | ReplacementConfirmationMessage
-  | DeletionChoiceMessage | DeletionConfirmationMessage;
+  | DeletionChoiceMessage | DeletionConfirmationMessage | RecallResultMessage;
 
 interface ChatPanelProps {
   vehicle: VehicleProfile;
   vehicles: VehicleProfile[];
   view: AppView;
+  apiBaseUrl?: string;
   onAddVehicle: (vehicle: VehicleProfile) => Promise<boolean>;
   onReplaceVehicle: (vehicleId: string, replacement: VehicleProfile) => Promise<void>;
   onDeleteVehicle: (vehicleId: string) => Promise<void>;
@@ -195,7 +204,42 @@ function ProfileChoiceList({ vehicles, actionLabel, disabled, onSelect }: { vehi
   );
 }
 
-export function ChatPanel({ vehicle, vehicles, view, onAddVehicle, onReplaceVehicle, onDeleteVehicle }: ChatPanelProps) {
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function RecallResultCard({ result }: { result: RecallLookupResult }) {
+  const details = [result.query.generation, result.query.projectCode].filter(Boolean).join(" · ");
+  return (
+    <section className="recall-result-card" aria-label="공식 리콜 조회 결과">
+      <span>{result.sourceName} 조회 결과</span>
+      <strong>{result.query.manufacturer} {result.query.model} · {result.query.modelYear}</strong>
+      {details ? <small>{details}</small> : null}
+      <dl>
+        <div><dt>조회 시각</dt><dd>{formatDateTime(result.retrievedAt)}</dd></div>
+        <div><dt>정확 매칭 키</dt><dd>{result.query.lookupKey}</dd></div>
+      </dl>
+      <a className="chat-official-link" href={result.sourceUrl} target="_blank" rel="noreferrer">{result.sourceName} 공식 원천 열기 ↗</a>
+      {result.status === "no_results" ? (
+        <p>위 조회 시각과 정확 매칭 범위에서 공식 리콜 결과가 0건입니다.</p>
+      ) : (
+        <ul>
+          {result.items.map((item) => (
+            <li key={item.recallId}>
+              <strong>{item.title}</strong>
+              {item.publishedAt ? <small>공개일 {item.publishedAt}</small> : null}
+              <a href={item.sourceUrl} target="_blank" rel="noreferrer">공식 원문 보기 ↗</a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+export function ChatPanel({ vehicle, vehicles, view, apiBaseUrl, onAddVehicle, onReplaceVehicle, onDeleteVehicle }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [handledMessageIds, setHandledMessageIds] = useState<string[]>([]);
@@ -255,7 +299,22 @@ export function ChatPanel({ vehicle, vehicles, view, onAddVehicle, onReplaceVehi
         return;
       }
       const targetDescription = target.kind === "active" ? "현재 활성 차량" : "질문에 명시한 등록 차량";
-      appendMessage({ id: crypto.randomUUID(), kind: "text", role: "assistant", text: `${targetDescription}인 ${target.vehicle.nickname} · ${getVehicleTitle(target.vehicle)} 프로필을 리콜 조회 대상으로 확인했습니다. 자동차리콜센터 API 승인 공급자가 아직 설정되지 않아 실제 조회는 수행하지 않았습니다.` });
+      if (!apiBaseUrl) {
+        appendMessage({ id: crypto.randomUUID(), kind: "text", role: "assistant", text: `${targetDescription}인 ${target.vehicle.nickname} · ${getVehicleTitle(target.vehicle)} 프로필을 리콜 조회 대상으로 확인했습니다. FastAPI와 자동차리콜센터 승인 공급자가 연결되지 않아 실제 조회는 수행하지 않았습니다.` });
+        return;
+      }
+      setIsWorking(true);
+      try {
+        const result = await getApiRecalls(apiBaseUrl, target.vehicle.id);
+        appendMessage({ id: crypto.randomUUID(), kind: "recall-result", role: "assistant", result });
+      } catch (caught) {
+        const code = caught instanceof VehicleApiError ? caught.code : "recall_lookup_failed";
+        const unavailable = code === "recall_source_not_configured" || code === "recall_source_unavailable" || code === "network_error";
+        const detail = caught instanceof Error ? caught.message : "공식 리콜 정보를 조회하지 못했습니다.";
+        appendMessage({ id: crypto.randomUUID(), kind: "text", role: "assistant", text: `${targetDescription}인 ${target.vehicle.nickname} · ${getVehicleTitle(target.vehicle)} 프로필을 조회 대상으로 확인했지만 ${detail} ${unavailable ? "이 상태를 리콜 0건으로 간주하지 않습니다." : "차량 프로필과 API 동기화 상태를 확인해 주세요."}` });
+      } finally {
+        setIsWorking(false);
+      }
       return;
     }
 
@@ -370,6 +429,7 @@ export function ChatPanel({ vehicle, vehicles, view, onAddVehicle, onReplaceVehi
           if (message.kind === "replacement-confirmation") return <div key={message.id} className="message rich-message"><p><strong>{message.previousVehicle.nickname}</strong> 프로필을 삭제하고 <strong>{message.draft.candidate.modelName} · {message.draft.candidate.modelYear}</strong> 차량을 등록할까요?</p><div className="chat-confirm-actions"><button type="button" className="primary-button" disabled={isWorking || handled} onClick={() => void confirmReplacement(message.id, message.draft, message.previousVehicle)}>삭제하고 등록</button><button type="button" className="secondary-button" disabled={isWorking || handled} onClick={() => cancelAction(message.id, "프로필 교체를 취소했습니다.")}>취소</button></div></div>;
           if (message.kind === "deletion-choice") return <div key={message.id} className="message rich-message"><p>삭제할 차량 프로필을 선택해 주세요.</p><ProfileChoiceList vehicles={message.vehicles} actionLabel="삭제" disabled={isWorking || handled} onSelect={(item) => chooseDeletion(message.id, item)} /></div>;
           if (message.kind === "deletion-confirmation") return <div key={message.id} className="message rich-message"><p><strong>{message.target.nickname} · {getVehicleTitle(message.target)}</strong> 프로필을 삭제할까요? 이 작업은 현재 브라우저 또는 연결된 차량 API에 반영됩니다.</p><div className="chat-confirm-actions"><button type="button" className="danger-button" disabled={isWorking || handled} onClick={() => void confirmDeletion(message.id, message.target)}>프로필 삭제</button><button type="button" className="secondary-button" disabled={isWorking || handled} onClick={() => cancelAction(message.id, "프로필 삭제를 취소했습니다.")}>취소</button></div></div>;
+          if (message.kind === "recall-result") return <div key={message.id} className="message rich-message"><RecallResultCard result={message.result} /></div>;
           return <p key={message.id} className={`message ${message.role}`}>{message.text}</p>;
         })}
         {isWorking ? <p className="message" role="status">요청을 안전하게 처리하고 있습니다…</p> : null}

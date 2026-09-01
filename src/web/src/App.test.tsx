@@ -264,6 +264,149 @@ describe("vehicle-aware planner", () => {
     expect(screen.queryByText(/현대 넥쏘 · 2021 프로필을 리콜 조회 대상으로/)).not.toBeInTheDocument();
   });
 
+  it("shows the official recall query scope, retrieval time, and original links", async () => {
+    vi.stubEnv("VITE_API_BASE_URL", "http://127.0.0.1:8000");
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/vehicles")) {
+        return { ok: true, status: 200, json: async () => ({
+          items: [{
+            id: "api-stinger",
+            nickname: "내 스팅어",
+            manufacturer: "기아",
+            model: "스팅어",
+            model_year: 2021,
+            powertrain: "gasoline",
+            fuel_grade: "premium",
+            battery_capacity_kwh: null,
+            manual_site_id: "kia",
+            manual_model_name: "스팅어",
+            manual_project_code: "SC",
+            manual_generation: "CK",
+            manual_model_year: 2021,
+            manual_image_url: null,
+            manual_title: null,
+            manual_source_url: null,
+            manual_verified_at: "2026-08-31T00:00:00Z",
+            is_active: true,
+          }],
+          active_vehicle_id: "api-stinger",
+        }) } as Response;
+      }
+      if (url.endsWith("/api/v1/vehicles/api-stinger/recalls")) {
+        return { ok: true, status: 200, json: async () => ({
+          vehicle_id: "api-stinger",
+          status: "matched",
+          query: {
+            manufacturer: "기아",
+            model: "스팅어",
+            model_year: 2021,
+            generation: "CK",
+            project_code: "SC",
+            lookup_key: "기아|스팅어|2021|CK|SC",
+          },
+          items: [{
+            recall_id: "KOR-2026-001",
+            title: "연료 공급 계통 관련 평가용 리콜",
+            published_at: "2026-08-31",
+            source_url: "https://www.car.go.kr/ri/recall/detail.do?id=KOR-2026-001",
+          }],
+          source_name: "자동차리콜센터",
+          source_url: "https://www.car.go.kr/home/main.do",
+          retrieved_at: "2026-09-01T01:00:00+00:00",
+        }) } as Response;
+      }
+      throw new Error(`unexpected request: ${url}`);
+    }) as typeof fetch;
+
+    render(<App />);
+    expect(await screen.findByText("SQLite 동기화")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "내 차 리콜" } });
+    fireEvent.click(screen.getByRole("button", { name: "메시지 전송" }));
+
+    const result = within(await screen.findByLabelText("공식 리콜 조회 결과"));
+    expect(result.getByText("기아 스팅어 · 2021")).toBeInTheDocument();
+    expect(result.getByText("CK · SC")).toBeInTheDocument();
+    expect(result.getByText("기아|스팅어|2021|CK|SC")).toBeInTheDocument();
+    expect(result.getByText(/2026\. 9\. 1\./)).toBeInTheDocument();
+    expect(result.getByRole("link", { name: "자동차리콜센터 공식 원천 열기 ↗" })).toHaveAttribute("href", "https://www.car.go.kr/home/main.do");
+    expect(result.getByRole("link", { name: "공식 원문 보기 ↗" })).toHaveAttribute("href", "https://www.car.go.kr/ri/recall/detail.do?id=KOR-2026-001");
+  });
+
+  it("shows a scoped zero-result response without claiming that recalls do not exist", async () => {
+    vi.stubEnv("VITE_API_BASE_URL", "http://127.0.0.1:8000");
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/vehicles")) {
+        return { ok: true, status: 200, json: async () => ({
+          items: [{
+            id: "api-stinger", nickname: "내 스팅어", manufacturer: "기아", model: "스팅어", model_year: 2021,
+            powertrain: "gasoline", fuel_grade: "premium", battery_capacity_kwh: null,
+            manual_site_id: null, manual_model_name: null, manual_project_code: null, manual_generation: null,
+            manual_model_year: null, manual_image_url: null, manual_title: null, manual_source_url: null,
+            manual_verified_at: null, is_active: true,
+          }],
+          active_vehicle_id: "api-stinger",
+        }) } as Response;
+      }
+      if (url.endsWith("/api/v1/vehicles/api-stinger/recalls")) {
+        return { ok: true, status: 200, json: async () => ({
+          vehicle_id: "api-stinger",
+          status: "no_results",
+          query: { manufacturer: "기아", model: "스팅어", model_year: 2021, generation: null, project_code: null, lookup_key: "기아|스팅어|2021|-|-" },
+          items: [],
+          source_name: "자동차리콜센터",
+          source_url: "https://www.car.go.kr/home/main.do",
+          retrieved_at: "2026-09-01T01:00:00+00:00",
+        }) } as Response;
+      }
+      throw new Error(`unexpected request: ${url}`);
+    }) as typeof fetch;
+
+    render(<App />);
+    expect(await screen.findByText("SQLite 동기화")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "리콜 조회" } });
+    fireEvent.click(screen.getByRole("button", { name: "메시지 전송" }));
+
+    expect(await screen.findByText("위 조회 시각과 정확 매칭 범위에서 공식 리콜 결과가 0건입니다.")).toBeInTheDocument();
+    expect(screen.queryByText("리콜이 없습니다.")).not.toBeInTheDocument();
+  });
+
+  it("does not present a recall provider failure as a zero-result response", async () => {
+    vi.stubEnv("VITE_API_BASE_URL", "http://127.0.0.1:8000");
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/vehicles")) {
+        return { ok: true, status: 200, json: async () => ({
+          items: [{
+            id: "api-stinger", nickname: "내 스팅어", manufacturer: "기아", model: "스팅어", model_year: 2021,
+            powertrain: "gasoline", fuel_grade: "premium", battery_capacity_kwh: null,
+            manual_site_id: null, manual_model_name: null, manual_project_code: null, manual_generation: null,
+            manual_model_year: null, manual_image_url: null, manual_title: null, manual_source_url: null,
+            manual_verified_at: null, is_active: true,
+          }],
+          active_vehicle_id: "api-stinger",
+        }) } as Response;
+      }
+      if (url.endsWith("/api/v1/vehicles/api-stinger/recalls")) {
+        return { ok: false, status: 503, json: async () => ({ error: {
+          code: "recall_source_unavailable",
+          message: "공식 리콜 정보를 조회할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+          retryable: true,
+        } }) } as Response;
+      }
+      throw new Error(`unexpected request: ${url}`);
+    }) as typeof fetch;
+
+    render(<App />);
+    expect(await screen.findByText("SQLite 동기화")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "리콜 조회" } });
+    fireEvent.click(screen.getByRole("button", { name: "메시지 전송" }));
+
+    expect(await screen.findByText(/공식 리콜 정보를 조회할 수 없습니다.*이 상태를 리콜 0건으로 간주하지 않습니다/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("공식 리콜 조회 결과")).not.toBeInTheDocument();
+  });
+
   it("explains that BMW was recognized but its manual was not searched", async () => {
     render(<App />);
     fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "2015 BMW M3 등록" } });
