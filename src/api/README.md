@@ -1,6 +1,6 @@
 # Backend API
 
-FastAPI와 SQLite 기반 백엔드입니다. 차량 프로필, 승인된 로컬 매뉴얼의 추출·청크 저장·출처 검색과 리콜 API 계약을 제공합니다. 생성형 매뉴얼 답변은 검증 환경에서만 선택적으로 연결하며 외부 리콜 데이터는 아직 연결하지 않습니다.
+FastAPI와 SQLite 기반 백엔드입니다. 차량 프로필, 승인된 로컬 매뉴얼의 추출·청크 저장·출처 검색과 리콜 API 계약을 제공합니다. 생성형 매뉴얼 답변은 검증 환경에서만 선택적으로 연결합니다. 리콜은 자동차리콜센터 공급자 계약만 구현했으며 승인된 실제 HTTP 공급자는 아직 연결하지 않습니다.
 
 ## 실행
 
@@ -48,9 +48,9 @@ uv run pytest
 | `GET /api/v1/manual-adapters` | 제조사별 식별·연동·저장 정책 조회 |
 | `POST /api/v1/manual-adapters/{adapter_id}/resolve` | 승인된 쉐보레·KGM 모델·연식·세대 매핑 조회 |
 | `POST /api/v1/vehicles/{vehicle_id}/manual-adapters/{adapter_id}` | 정확한 승인 매핑을 차량 프로필에 연결 |
-| `GET /api/v1/vehicles/{vehicle_id}/recalls` | 계약만 제공, 현재 `503` |
+| `GET /api/v1/vehicles/{vehicle_id}/recalls` | 자동차리콜센터 공급자 미설정 시 `503`; 승인 공급자 주입 시 정상·0건·장애 상태 구분 |
 
-매뉴얼 작업자는 `uv run python -m app.manual_worker`로 실행합니다. manifest에 승인된 공식 HTTPS 출처와 서버 디렉터리 내부 파일만 처리하며, 제조사 PDF를 저장소에 커밋하거나 브라우저로 복제하지 않습니다. 리콜 API의 `503`은 미연동 상태를 성공인 것처럼 보이지 않도록 의도적으로 실패 폐쇄한 상태입니다.
+매뉴얼 작업자는 `uv run python -m app.manual_worker`로 실행합니다. manifest에 승인된 공식 HTTPS 출처와 서버 디렉터리 내부 파일만 처리하며, 제조사 PDF를 저장소에 커밋하거나 브라우저로 복제하지 않습니다. 리콜 공급자가 없을 때의 `503`은 미연동 상태를 성공인 것처럼 보이지 않도록 의도적으로 실패 폐쇄한 상태입니다. 공급자 계약과 이용 경계는 [ADR-0008](../../docs/decisions/0008-use-approved-car-recall-center-provider.md)을 따릅니다.
 
 ## 외부 라이브러리와 데이터 경계
 

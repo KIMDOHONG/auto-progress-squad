@@ -36,6 +36,12 @@ from .manual_grounded_answer import (
     ManualAnswerValidationError,
 )
 from .manual_ingestion import search_manual_document
+from .recall_provider import (
+    RecallProviderError,
+    RecallQuery,
+    validate_provider,
+    validate_recall_records,
+)
 from .schemas import (
     ApiErrorResponse,
     HealthResponse,
@@ -48,6 +54,7 @@ from .schemas import (
     ManualCatalogLookupResponse,
     ManualIngestionStatus,
     RecallListResponse,
+    RecallQueryScope,
     VehicleCreate,
     VehicleListResponse,
     VehicleProfile,
@@ -501,15 +508,61 @@ def search_manual(request: Request, payload: ManualSearchRequest) -> ManualSearc
 @router.get(
     "/vehicles/{vehicle_id}/recalls",
     response_model=RecallListResponse,
-    responses={503: {"model": ApiErrorResponse}},
+    responses={404: {"model": ApiErrorResponse}, 503: {"model": ApiErrorResponse}},
     tags=["recalls"],
 )
-def list_recalls(vehicle_id: str) -> RecallListResponse:
+def list_recalls(vehicle_id: str, request: Request) -> RecallListResponse:
     if not vehicle_id.strip():
         raise ServiceNotConfiguredError(
             code="vehicle_id_required", message="차량 식별자가 필요합니다."
         )
-    raise ServiceNotConfiguredError(
-        code="recall_source_not_configured",
-        message="공식 리콜 데이터 원천이 아직 연결되지 않았습니다.",
+    provider = getattr(request.app.state, "recall_provider", None)
+    if provider is None:
+        raise ServiceNotConfiguredError(
+            code="recall_source_not_configured",
+            message="자동차리콜센터 API 승인을 받은 공급자가 설정되지 않았습니다.",
+        )
+    settings = request.app.state.settings
+    try:
+        row = get_vehicle_row(settings.database_path, vehicle_id)
+    except VehicleNotFoundError:
+        raise vehicle_not_found() from None
+    query = RecallQuery(
+        vehicle_id=vehicle_id,
+        manufacturer=row["manufacturer"],
+        model=row["model"],
+        model_year=row["model_year"],
+        project_code=row["manual_project_code"],
+    )
+    try:
+        validate_provider(provider)
+        records = validate_recall_records(provider.list_recalls(query))
+    except RecallProviderError:
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "recall_source_unavailable",
+            "공식 리콜 정보를 조회할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+            retryable=True,
+        ) from None
+    return RecallListResponse(
+        vehicle_id=vehicle_id,
+        status="matched" if records else "no_results",
+        query=RecallQueryScope(
+            manufacturer=query.manufacturer,
+            model=query.model,
+            model_year=query.model_year,
+            project_code=query.project_code,
+        ),
+        items=[
+            {
+                "recall_id": record.recall_id,
+                "title": record.title,
+                "published_at": record.published_at,
+                "source_url": record.source_url,
+            }
+            for record in records
+        ],
+        source_name=provider.source_name,
+        source_url=provider.source_url,
+        retrieved_at=datetime.now(UTC).isoformat(),
     )
