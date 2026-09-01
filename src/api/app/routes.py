@@ -39,6 +39,7 @@ from .manual_ingestion import search_manual_document
 from .recall_provider import (
     RecallProviderError,
     RecallQuery,
+    match_recall_records,
     validate_provider,
     validate_recall_records,
 )
@@ -532,11 +533,15 @@ def list_recalls(vehicle_id: str, request: Request) -> RecallListResponse:
         manufacturer=row["manufacturer"],
         model=row["model"],
         model_year=row["model_year"],
+        generation=row["manual_generation"],
         project_code=row["manual_project_code"],
     )
     try:
         validate_provider(provider)
-        records = validate_recall_records(provider.list_recalls(query))
+        records = match_recall_records(
+            query.vehicle_key,
+            validate_recall_records(provider.list_recalls(query)),
+        )
     except RecallProviderError:
         raise ApiError(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -551,7 +556,9 @@ def list_recalls(vehicle_id: str, request: Request) -> RecallListResponse:
             manufacturer=query.manufacturer,
             model=query.model,
             model_year=query.model_year,
+            generation=query.generation,
             project_code=query.project_code,
+            lookup_key=query.vehicle_key.value,
         ),
         items=[
             {
