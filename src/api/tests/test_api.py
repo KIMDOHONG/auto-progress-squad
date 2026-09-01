@@ -193,6 +193,11 @@ def test_openapi_exposes_planned_contracts(client: TestClient) -> None:
     assert "/api/v1/vehicles/{vehicle_id}/manual-adapters/{adapter_id}" in paths
     assert "/api/v1/vehicles/{vehicle_id}/recalls" in paths
 
+    recall_responses = paths[
+        "/api/v1/vehicles/{vehicle_id}/recalls"
+    ]["get"]["responses"]
+    assert {"404", "503"}.issubset(recall_responses)
+
     resolve_responses = paths[
         "/api/v1/manual-adapters/{adapter_id}/resolve"
     ]["post"]["responses"]

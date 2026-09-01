@@ -240,7 +240,18 @@ class RecallItem(BaseModel):
     source_url: str
 
 
+class RecallQueryScope(BaseModel):
+    manufacturer: str
+    model: str
+    model_year: int
+    project_code: str | None = None
+
+
 class RecallListResponse(BaseModel):
     vehicle_id: str
+    status: Literal["matched", "no_results"]
+    query: RecallQueryScope
     items: list[RecallItem]
+    source_name: str
+    source_url: str
     retrieved_at: str

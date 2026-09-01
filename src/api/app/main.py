@@ -11,16 +11,22 @@ from .database import initialize_database
 from .errors import install_error_handlers
 from .manual_embedding_search import EmbeddingManualSearcher
 from .manual_grounded_answer import OpenVINOGroundedAnswerGenerator
+from .recall_provider import RecallProvider
 from .routes import router
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    recall_provider: RecallProvider | None = None,
+) -> FastAPI:
     resolved_settings = settings or Settings.from_env()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         initialize_database(resolved_settings.database_path)
         app.state.settings = resolved_settings
+        app.state.recall_provider = recall_provider
         app.state.manual_embedding_search = (
             EmbeddingManualSearcher(
                 model_name=resolved_settings.manual_embedding_model,
@@ -51,7 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description=(
             "차량 프로필, 승인된 매뉴얼의 출처 검색과 리콜 조회를 위한 백엔드입니다. "
             "생성형 매뉴얼 답변은 명시적인 OpenVINO 설정에서만 사용하며, "
-            "외부 리콜 데이터는 아직 연결되지 않았습니다."
+            "공식 리콜 데이터는 승인 공급자가 설정된 경우에만 조회합니다."
         ),
         lifespan=lifespan,
     )
