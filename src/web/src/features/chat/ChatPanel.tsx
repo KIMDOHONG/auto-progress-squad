@@ -6,6 +6,7 @@ import {
   toManualMetadata,
   type OfficialVehicleCandidate,
 } from "../../lib/officialVehicle";
+import { resolveRecallTarget } from "../../lib/recallTarget";
 import { FUEL_GRADE_LABELS, POWERTRAIN_LABELS, getVehicleTitle } from "../../lib/vehicle";
 import type { AppView, FuelGrade, Powertrain, VehicleProfile } from "../../types";
 
@@ -243,7 +244,18 @@ export function ChatPanel({ vehicle, vehicles, view, onAddVehicle, onReplaceVehi
     }
 
     if (/리콜/.test(text)) {
-      appendMessage({ id: crypto.randomUUID(), kind: "text", role: "assistant", text: "리콜 조회 기능은 아직 공식 데이터와 연결되지 않았습니다. 현재 차량 정보를 근거 없이 추정하지 않고, 제조사·자동차리콜센터 연결 단계에서 구현하겠습니다." });
+      const target = resolveRecallTarget(text, vehicles, vehicle);
+      if (target.kind === "ambiguous") {
+        const labels = target.vehicles.map((item) => `${item.nickname} · ${getVehicleTitle(item)}`).join(", ");
+        appendMessage({ id: crypto.randomUUID(), kind: "text", role: "assistant", text: `리콜 조회 대상으로 여러 등록 프로필이 일치합니다: ${labels}. 별명 또는 네 자리 연식을 포함해 다시 입력해 주세요.` });
+        return;
+      }
+      if (target.kind === "missing") {
+        appendMessage({ id: crypto.randomUUID(), kind: "text", role: "assistant", text: `질문에 명시한 ‘${target.query}’ 차량과 일치하는 등록 프로필을 찾지 못했습니다. 다른 차량의 리콜로 대신 조회하지 않으며, 별명 또는 차명과 네 자리 연식을 확인해 주세요.` });
+        return;
+      }
+      const targetDescription = target.kind === "active" ? "현재 활성 차량" : "질문에 명시한 등록 차량";
+      appendMessage({ id: crypto.randomUUID(), kind: "text", role: "assistant", text: `${targetDescription}인 ${target.vehicle.nickname} · ${getVehicleTitle(target.vehicle)} 프로필을 리콜 조회 대상으로 확인했습니다. 자동차리콜센터 API 승인 공급자가 아직 설정되지 않아 실제 조회는 수행하지 않았습니다.` });
       return;
     }
 
