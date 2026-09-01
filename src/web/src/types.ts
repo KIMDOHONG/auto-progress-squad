@@ -48,6 +48,32 @@ export interface ManualSearchResult {
   generatedAt: string;
 }
 
+export interface RecallItem {
+  recallId: string;
+  title: string;
+  publishedAt?: string;
+  sourceUrl: string;
+}
+
+export interface RecallQueryScope {
+  manufacturer: string;
+  model: string;
+  modelYear: number;
+  generation?: string;
+  projectCode?: string;
+  lookupKey: string;
+}
+
+export interface RecallLookupResult {
+  vehicleId: string;
+  status: "matched" | "no_results";
+  query: RecallQueryScope;
+  items: RecallItem[];
+  sourceName: string;
+  sourceUrl: string;
+  retrievedAt: string;
+}
+
 export interface VehicleProfile {
   id: string;
   nickname: string;

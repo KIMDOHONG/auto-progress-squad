@@ -122,6 +122,20 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .danger-button:disabled { cursor: wait; opacity: .58; }
 .chat-official-link { display: block; border-radius: 9px; background: #e8f0ff; padding: 9px 10px; color: #175cd3; font-size: 10px; font-weight: 800; text-decoration: none; }
 .chat-official-link:hover { background: #dbe8ff; }
+.recall-result-card { display: grid; gap: 8px; }
+.recall-result-card > span { color: var(--blue); font-size: 9px; font-weight: 800; }
+.recall-result-card > strong { font-size: 12px; }
+.recall-result-card > small { color: var(--muted); font-size: 9px; }
+.recall-result-card dl { display: grid; gap: 4px; margin: 0; }
+.recall-result-card dl div { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 6px; font-size: 9px; }
+.recall-result-card dt { color: var(--muted); }
+.recall-result-card dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.recall-result-card > p { margin: 2px 0 0; font-size: 9px; line-height: 1.55; }
+.recall-result-card ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.recall-result-card li { display: grid; gap: 3px; border-top: 1px solid var(--line); padding-top: 7px; }
+.recall-result-card li strong { font-size: 9px; line-height: 1.45; }
+.recall-result-card li small { color: var(--muted); font-size: 8px; }
+.recall-result-card li a { color: var(--blue); font-size: 9px; font-weight: 800; text-decoration: none; }
 .profile-choice-list { display: grid; gap: 7px; }
 .profile-choice-list button { width: 100%; min-width: 0; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; background: #f8fafc; padding: 7px; color: var(--ink); text-align: left; }
 .profile-choice-list button:hover { border-color: #8db0ff; background: #f2f6ff; }

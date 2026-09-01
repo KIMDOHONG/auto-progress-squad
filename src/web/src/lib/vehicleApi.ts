@@ -1,4 +1,4 @@
-import type { CatalogManualAdapterId, ManualIngestionStatus, ManualSearchResult, OfficialManualSiteId, VehicleProfile } from "../types";
+import type { CatalogManualAdapterId, ManualIngestionStatus, ManualSearchResult, OfficialManualSiteId, RecallLookupResult, VehicleProfile } from "../types";
 
 interface ApiVehicleProfile {
   id: string;
@@ -58,6 +58,28 @@ interface ApiManualSearchResult {
     excerpt: string;
   }>;
   generated_at: string;
+}
+
+interface ApiRecallLookupResult {
+  vehicle_id: string;
+  status: RecallLookupResult["status"];
+  query: {
+    manufacturer: string;
+    model: string;
+    model_year: number;
+    generation: string | null;
+    project_code: string | null;
+    lookup_key: string;
+  };
+  items: Array<{
+    recall_id: string;
+    title: string;
+    published_at: string | null;
+    source_url: string;
+  }>;
+  source_name: string;
+  source_url: string;
+  retrieved_at: string;
 }
 
 export class VehicleApiError extends Error {
@@ -251,5 +273,33 @@ export async function searchApiManual(
       ...(source.page ? { page: source.page } : {}),
       ...(source.section ? { section: source.section } : {}),
     })),
+  };
+}
+
+export async function getApiRecalls(baseUrl: string, vehicleId: string): Promise<RecallLookupResult> {
+  const response = await request<ApiRecallLookupResult>(
+    baseUrl,
+    `/api/v1/vehicles/${encodeURIComponent(vehicleId)}/recalls`,
+  );
+  return {
+    vehicleId: response.vehicle_id,
+    status: response.status,
+    query: {
+      manufacturer: response.query.manufacturer,
+      model: response.query.model,
+      modelYear: response.query.model_year,
+      lookupKey: response.query.lookup_key,
+      ...(response.query.generation ? { generation: response.query.generation } : {}),
+      ...(response.query.project_code ? { projectCode: response.query.project_code } : {}),
+    },
+    items: response.items.map((item) => ({
+      recallId: item.recall_id,
+      title: item.title,
+      sourceUrl: item.source_url,
+      ...(item.published_at ? { publishedAt: item.published_at } : {}),
+    })),
+    sourceName: response.source_name,
+    sourceUrl: response.source_url,
+    retrievedAt: response.retrieved_at,
   };
 }

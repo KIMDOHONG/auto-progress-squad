@@ -45,7 +45,7 @@ export default function App() {
           {view === "manual" ? <ManualHub vehicle={activeVehicle} syncStatus={syncStatus} onAttachManualAdapter={attachManualAdapter} /> : null}
           {view === "maintenance" || view === "used-car" ? <section className="page-section placeholder-page"><p className="section-caption">다음 구현 단계</p><h1>{STATIC_PAGES[view].title}</h1><p>{STATIC_PAGES[view].copy}</p><div className="placeholder-rail"><span /><span /><span /></div></section> : null}
         </main>
-        <ChatPanel vehicle={activeVehicle} vehicles={vehicles} view={view} onAddVehicle={addVehicle} onReplaceVehicle={replaceVehicle} onDeleteVehicle={deleteVehicle} />
+        <ChatPanel vehicle={activeVehicle} vehicles={vehicles} view={view} apiBaseUrl={syncStatus.mode === "api" ? syncStatus.apiBaseUrl : undefined} onAddVehicle={addVehicle} onReplaceVehicle={replaceVehicle} onDeleteVehicle={deleteVehicle} />
       </div>
       {vehicleManagerOpen ? <VehicleManager vehicles={vehicles} activeVehicleId={activeVehicle.id} onClose={() => setVehicleManagerOpen(false)} onSelect={setActiveVehicle} onAdd={addVehicle} onUpdate={updateVehicle} onDelete={deleteVehicle} /> : null}
     </div>
