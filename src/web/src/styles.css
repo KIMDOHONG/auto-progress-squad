@@ -161,7 +161,13 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .form-grid label, .vehicle-form label { position: relative; display: grid; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 800; }
 .form-grid input, .form-grid select, .vehicle-form input, .vehicle-form select { min-width: 0; height: 44px; border: 1px solid #cad6e5; border-radius: 11px; background: white; padding: 0 12px; color: var(--ink); font-size: 13px; font-weight: 600; }
 .input-suffix { position: absolute; right: 11px; bottom: 14px; color: var(--muted); font-size: 10px; font-weight: 700; }
-.planner-form .primary-button { margin-top: 16px; }
+.planner-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.planner-actions .primary-button, .planner-actions .secondary-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin: 0; }
+.planner-actions svg { width: 17px; }
+.route-lookup-status, .route-lookup-error { display: grid; gap: 4px; margin-top: 14px; border: 1px solid #a7ddc9; border-radius: 11px; background: #f0fdf7; padding: 11px 13px; font-size: 11px; line-height: 1.5; }
+.route-lookup-status strong { color: var(--green); }
+.route-lookup-status span:last-child { color: var(--muted); }
+.route-lookup-error { border-color: #f0cf8b; background: #fff9eb; color: #8a4b00; }
 .planner-errors { margin-top: 14px; border: 1px solid #f3b5b0; border-radius: 11px; background: #fff4f3; padding: 11px 13px; color: #b42318; font-size: 11px; line-height: 1.5; }
 .planner-errors ul { margin: 5px 0 0; padding-left: 18px; }
 .primary-button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 11px; background: var(--blue); color: white; padding: 0 18px; font-size: 13px; font-weight: 800; }
@@ -347,6 +353,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   .manual-vehicle-visual img { height: 68px; }
   .manual-vehicle-visual span { display: none; }
   .feature-grid, .planner-content, .three-columns, .manual-brand-list { grid-template-columns: 1fr; }
+  .planner-actions { display: grid; grid-template-columns: 1fr; }
   .feature-card { min-height: 130px; padding: 18px; }
   .route-inputs { grid-template-columns: 1fr; }
   .route-canvas { min-height: 260px; }

@@ -31,6 +31,9 @@ class Settings:
     manual_generation_device: str = "CPU"
     manual_generation_max_new_tokens: int = 256
     manual_grounding_min_token_overlap: float = 0.55
+    naver_maps_client_id: str | None = None
+    naver_maps_client_secret: str | None = None
+    naver_maps_timeout_seconds: float = 5.0
 
     def __post_init__(self) -> None:
         if self.manual_search_mode not in {"keyword", "embedding"}:
@@ -47,6 +50,12 @@ class Settings:
             raise ValueError(
                 "APS_MANUAL_GROUNDING_MIN_TOKEN_OVERLAP must be between 0 and 1"
             )
+        if bool(self.naver_maps_client_id) != bool(self.naver_maps_client_secret):
+            raise ValueError(
+                "APS_NAVER_MAPS_CLIENT_ID and APS_NAVER_MAPS_CLIENT_SECRET must be set together"
+            )
+        if self.naver_maps_timeout_seconds <= 0:
+            raise ValueError("APS_NAVER_MAPS_TIMEOUT_SECONDS must be greater than zero")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -99,5 +108,14 @@ class Settings:
             ),
             manual_grounding_min_token_overlap=float(
                 os.getenv("APS_MANUAL_GROUNDING_MIN_TOKEN_OVERLAP", "0.55")
+            ),
+            naver_maps_client_id=(
+                os.getenv("APS_NAVER_MAPS_CLIENT_ID", "").strip() or None
+            ),
+            naver_maps_client_secret=(
+                os.getenv("APS_NAVER_MAPS_CLIENT_SECRET", "").strip() or None
+            ),
+            naver_maps_timeout_seconds=float(
+                os.getenv("APS_NAVER_MAPS_TIMEOUT_SECONDS", "5")
             ),
         )

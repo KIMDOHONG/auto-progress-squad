@@ -257,3 +257,26 @@ class RecallListResponse(BaseModel):
     source_name: str
     source_url: str
     retrieved_at: str
+
+
+class RouteLookupRequest(BaseModel):
+    departure: str = Field(min_length=2, max_length=200)
+    destination: str = Field(min_length=2, max_length=200)
+
+
+class RouteLocationResponse(BaseModel):
+    query: str
+    address: str
+    longitude: float
+    latitude: float
+
+
+class RouteLookupResponse(BaseModel):
+    departure: RouteLocationResponse
+    destination: RouteLocationResponse
+    distance_km: float
+    duration_minutes: int
+    route_option: Literal["trafast"]
+    source_name: str
+    source_url: str
+    retrieved_at: str

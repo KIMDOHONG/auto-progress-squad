@@ -43,6 +43,7 @@ from .recall_provider import (
     validate_provider,
     validate_recall_records,
 )
+from .route_provider import RouteLocationNotFoundError, RouteProviderError
 from .schemas import (
     ApiErrorResponse,
     HealthResponse,
@@ -56,6 +57,9 @@ from .schemas import (
     ManualIngestionStatus,
     RecallListResponse,
     RecallQueryScope,
+    RouteLocationResponse,
+    RouteLookupRequest,
+    RouteLookupResponse,
     VehicleCreate,
     VehicleListResponse,
     VehicleProfile,
@@ -120,6 +124,52 @@ def health(request: Request) -> HealthResponse:
         service="auto-progress-squad-api",
         version="0.1.0",
         database="ready",
+    )
+
+
+@router.post(
+    "/planner/route",
+    response_model=RouteLookupResponse,
+    responses={422: {"model": ApiErrorResponse}, 503: {"model": ApiErrorResponse}},
+    tags=["planner"],
+)
+def lookup_planner_route(
+    request: Request, payload: RouteLookupRequest
+) -> RouteLookupResponse:
+    provider = getattr(request.app.state, "route_provider", None)
+    if provider is None:
+        raise ServiceNotConfiguredError(
+            code="route_source_not_configured",
+            message="실제 경로 조회 API가 설정되지 않았습니다. 직접 입력 거리로 계산해 주세요.",
+        )
+    try:
+        route = provider.lookup_route(
+            payload.departure.strip(), payload.destination.strip()
+        )
+    except RouteLocationNotFoundError as error:
+        field_label = "출발지" if error.field == "departure" else "목적지"
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "route_location_not_found",
+            f"{field_label} 주소를 찾을 수 없습니다. 주소를 더 구체적으로 입력해 주세요.",
+            details=[{"field": error.field}],
+        ) from None
+    except RouteProviderError:
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "route_source_unavailable",
+            "실제 경로를 조회할 수 없습니다. 잠시 후 다시 시도하거나 직접 입력 거리로 계산해 주세요.",
+            retryable=True,
+        ) from None
+    return RouteLookupResponse(
+        departure=RouteLocationResponse(**asdict(route.departure)),
+        destination=RouteLocationResponse(**asdict(route.destination)),
+        distance_km=round(route.distance_meters / 1000, 1),
+        duration_minutes=max(1, round(route.duration_milliseconds / 60_000)),
+        route_option=route.route_option,
+        source_name=provider.source_name,
+        source_url=provider.source_url,
+        retrieved_at=datetime.now(UTC).isoformat(),
     )
 
 

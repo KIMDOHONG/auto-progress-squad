@@ -23,7 +23,7 @@ describe("vehicle-aware planner", () => {
     fireEvent.click(plannerButtons[0]);
     expect(screen.getByRole("heading", { name: "수소 충전·주행 플래너" })).toBeInTheDocument();
     expect(screen.getByDisplayValue("수소")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "로컬 계산 실행" }));
+    fireEvent.click(screen.getByRole("button", { name: "직접 입력 거리로 계산" }));
     const result = within(screen.getByLabelText("로컬 플래너 계산 결과"));
     expect(result.getByText("수소 충전 없이 도착 가능")).toBeInTheDocument();
     expect(result.getByText(/수소충전소 위치·운영 상태·대기 현황 관련 정보는 결과에 포함하지 않았습니다/)).toBeInTheDocument();
@@ -38,7 +38,7 @@ describe("vehicle-aware planner", () => {
     expect(screen.getByLabelText(/목적지 메모/)).toHaveValue("대한상공회의소 부산인력개발원");
     expect(screen.getByLabelText(/사용 가능 배터리 용량/)).toHaveValue(84);
     fireEvent.change(screen.getByLabelText(/경로 거리/), { target: { value: "250" } });
-    fireEvent.click(screen.getByRole("button", { name: "로컬 계산 실행" }));
+    fireEvent.click(screen.getByRole("button", { name: "직접 입력 거리로 계산" }));
     const result = within(screen.getByLabelText("로컬 플래너 계산 결과"));
     expect(result.getByText("충전 필요")).toBeInTheDocument();
     expect(result.getByText("22.1 kWh")).toBeInTheDocument();
@@ -50,7 +50,7 @@ describe("vehicle-aware planner", () => {
     fireEvent.click((await screen.findAllByRole("button", { name: /EV 충전 플래너/ }))[0]);
     fireEvent.change(screen.getByLabelText(/경로 거리/), { target: { value: "0" } });
     fireEvent.change(screen.getByLabelText(/최근 전비/), { target: { value: "0" } });
-    fireEvent.click(screen.getByRole("button", { name: "로컬 계산 실행" }));
+    fireEvent.click(screen.getByRole("button", { name: "직접 입력 거리로 계산" }));
 
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("경로 거리는 0보다 큰 값이어야 합니다.");
@@ -66,7 +66,7 @@ describe("vehicle-aware planner", () => {
     fireEvent.click(plannerButtons[0]);
     expect(await screen.findByText("BMW M3 · 2021 · 고급 휘발유 기준")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/경로 거리/), { target: { value: "180" } });
-    fireEvent.click(screen.getByRole("button", { name: "로컬 계산 실행" }));
+    fireEvent.click(screen.getByRole("button", { name: "직접 입력 거리로 계산" }));
     const result = within(screen.getByLabelText("로컬 플래너 계산 결과"));
     expect(result.getByText("주유 필요")).toBeInTheDocument();
     expect(result.getByText(/최소 60 km의 추가 주행가능거리/)).toBeInTheDocument();

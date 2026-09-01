@@ -12,6 +12,7 @@ from .errors import install_error_handlers
 from .manual_embedding_search import EmbeddingManualSearcher
 from .manual_grounded_answer import OpenVINOGroundedAnswerGenerator
 from .recall_provider import RecallProvider
+from .route_provider import NaverMapsRouteProvider, RouteProvider
 from .routes import router
 
 
@@ -19,6 +20,7 @@ def create_app(
     settings: Settings | None = None,
     *,
     recall_provider: RecallProvider | None = None,
+    route_provider: RouteProvider | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings.from_env()
 
@@ -27,6 +29,16 @@ def create_app(
         initialize_database(resolved_settings.database_path)
         app.state.settings = resolved_settings
         app.state.recall_provider = recall_provider
+        app.state.route_provider = route_provider or (
+            NaverMapsRouteProvider(
+                resolved_settings.naver_maps_client_id,
+                resolved_settings.naver_maps_client_secret,
+                timeout_seconds=resolved_settings.naver_maps_timeout_seconds,
+            )
+            if resolved_settings.naver_maps_client_id
+            and resolved_settings.naver_maps_client_secret
+            else None
+        )
         app.state.manual_embedding_search = (
             EmbeddingManualSearcher(
                 model_name=resolved_settings.manual_embedding_model,
@@ -55,7 +67,7 @@ def create_app(
         title="자동진행단 자동차 AI 코파일럿 API",
         version="0.1.0",
         description=(
-            "차량 프로필, 승인된 매뉴얼의 출처 검색과 리콜 조회를 위한 백엔드입니다. "
+            "차량 프로필, 승인된 매뉴얼의 출처 검색, 리콜과 선택적 실제 경로 조회를 위한 백엔드입니다. "
             "생성형 매뉴얼 답변은 명시적인 OpenVINO 설정에서만 사용하며, "
             "공식 리콜 데이터는 승인 공급자가 설정된 경우에만 조회합니다."
         ),
