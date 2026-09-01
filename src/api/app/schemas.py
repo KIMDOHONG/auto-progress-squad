@@ -244,7 +244,9 @@ class RecallQueryScope(BaseModel):
     manufacturer: str
     model: str
     model_year: int
+    generation: str | None = None
     project_code: str | None = None
+    lookup_key: str
 
 
 class RecallListResponse(BaseModel):

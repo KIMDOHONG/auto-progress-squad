@@ -13,6 +13,7 @@ from app.recall_provider import (
     RecallProviderError,
     RecallQuery,
     RecallRecord,
+    RecallVehicleKey,
 )
 
 
@@ -61,6 +62,23 @@ def vehicle_payload() -> dict[str, object]:
     }
 
 
+def stinger_key(
+    *,
+    manufacturer: str = "기아",
+    model: str = "스팅어",
+    model_year: int = 2021,
+    generation: str | None = None,
+    project_code: str | None = "CK",
+) -> RecallVehicleKey:
+    return RecallVehicleKey(
+        manufacturer=manufacturer,
+        model=model,
+        model_year=model_year,
+        generation=generation,
+        project_code=project_code,
+    )
+
+
 def test_recall_lookup_returns_official_records_and_query_scope(tmp_path: Path) -> None:
     provider = FakeRecallProvider(
         (
@@ -69,6 +87,9 @@ def test_recall_lookup_returns_official_records_and_query_scope(tmp_path: Path) 
                 title="평가용 리콜 제목",
                 published_at="2026-08-01",
                 source_url="https://www.car.go.kr/ri/recall/detail.do?id=KOR-2026-001",
+                vehicle_key=stinger_key(
+                    manufacturer="KIA Corporation", model="스 팅어", project_code="ck"
+                ),
             ),
         )
     )
@@ -84,7 +105,9 @@ def test_recall_lookup_returns_official_records_and_query_scope(tmp_path: Path) 
             "manufacturer": "기아",
             "model": "스팅어",
             "model_year": 2021,
+            "generation": None,
             "project_code": "CK",
+            "lookup_key": "kia|스팅어|2021|-|ck",
         },
         "items": [
             {
@@ -106,6 +129,7 @@ def test_recall_lookup_returns_official_records_and_query_scope(tmp_path: Path) 
             manufacturer="기아",
             model="스팅어",
             model_year=2021,
+            generation=None,
             project_code="CK",
         )
     ]
@@ -158,6 +182,7 @@ def test_recall_lookup_rejects_non_official_record_url(tmp_path: Path) -> None:
                 recall_id="untrusted",
                 title="비공식 결과",
                 source_url="https://example.com/recall/untrusted",
+                vehicle_key=stinger_key(),
             ),
         )
     )
@@ -167,3 +192,52 @@ def test_recall_lookup_rejects_non_official_record_url(tmp_path: Path) -> None:
 
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "recall_source_unavailable"
+
+
+def test_recall_lookup_does_not_substitute_other_year_generation_or_project(
+    tmp_path: Path,
+) -> None:
+    provider = FakeRecallProvider(
+        (
+            RecallRecord(
+                recall_id="other-year",
+                title="다른 연식",
+                source_url="https://www.car.go.kr/ri/recall/detail.do?id=other-year",
+                vehicle_key=stinger_key(model_year=2022),
+            ),
+            RecallRecord(
+                recall_id="other-generation",
+                title="다른 세대",
+                source_url=(
+                    "https://www.car.go.kr/ri/recall/detail.do?id=other-generation"
+                ),
+                vehicle_key=stinger_key(generation="CK PE"),
+            ),
+            RecallRecord(
+                recall_id="other-project",
+                title="다른 프로젝트 코드",
+                source_url=(
+                    "https://www.car.go.kr/ri/recall/detail.do?id=other-project"
+                ),
+                vehicle_key=stinger_key(project_code="CK2"),
+            ),
+        )
+    )
+    with TestClient(create_app(settings(tmp_path), recall_provider=provider)) as client:
+        assert client.post("/api/v1/vehicles", json=vehicle_payload()).status_code == 201
+        response = client.get("/api/v1/vehicles/stinger-2021/recalls")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "no_results"
+    assert response.json()["items"] == []
+
+
+def test_recall_vehicle_key_only_normalizes_format_and_known_manufacturer_aliases() -> None:
+    assert stinger_key(
+        manufacturer="기아자동차",
+        model="스팅어  ",
+        project_code="ＣＫ",
+    ) == stinger_key(manufacturer="KIA", model="스-팅어", project_code="ck")
+    assert stinger_key(model="스팅어 마이스터") != stinger_key(model="스팅어")
+    assert stinger_key(model_year=2022) != stinger_key(model_year=2021)
+    assert stinger_key(generation="CK PE") != stinger_key(generation=None)
