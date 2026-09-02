@@ -114,13 +114,12 @@ describe("DrivePlanner route lookup", () => {
   });
 
   it("uses browser GPS and the server reverse-geocoded address for departure", async () => {
+    const getCurrentPosition = vi.fn((success: PositionCallback) => success({
+      coords: { longitude: 129.0689, latitude: 35.0912 },
+    } as GeolocationPosition));
     Object.defineProperty(navigator, "geolocation", {
       configurable: true,
-      value: {
-        getCurrentPosition: (success: PositionCallback) => success({
-          coords: { longitude: 129.0689, latitude: 35.0912 },
-        } as GeolocationPosition),
-      },
+      value: { getCurrentPosition },
     });
     globalThis.fetch = vi.fn().mockResolvedValueOnce(
       response(locationPayload("현재 위치", "부산 영도구 태종로 423", 129.0689, 35.0912)),
@@ -131,5 +130,50 @@ describe("DrivePlanner route lookup", () => {
 
     expect(await screen.findByDisplayValue("부산 영도구 태종로 423")).toBeInTheDocument();
     expect(screen.getByText(/확인됨 · 부산 영도구 태종로 423/)).toBeInTheDocument();
+    expect(getCurrentPosition).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.any(Function),
+      { enableHighAccuracy: false, timeout: 20_000, maximumAge: 300_000 },
+    );
+  });
+
+  it("keeps the GPS coordinates visible when reverse geocoding is not configured", async () => {
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        getCurrentPosition: (success: PositionCallback) => success({
+          coords: { longitude: 129.0393984, latitude: 35.1130792 },
+        } as GeolocationPosition),
+      },
+    });
+    globalThis.fetch = vi.fn().mockResolvedValueOnce(response({ error: {
+      code: "route_source_not_configured",
+      message: "현재 위치 주소 변환 API가 설정되지 않았습니다. 주소를 직접 입력해 주세요.",
+    } }, false, 503));
+    render(<DrivePlanner vehicle={vehicle} apiBaseUrl="http://127.0.0.1:8000" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "GPS 현재 위치" }));
+
+    expect(await screen.findByDisplayValue("GPS 35.113079, 129.039398")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("GPS 좌표는 확인했지만 주소로 변환하지 못했습니다");
+    expect(screen.getByRole("alert")).toHaveTextContent("현재 위치 주소 변환 API가 설정되지 않았습니다");
+  });
+
+  it("explains when the current browser cannot provide a location", async () => {
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        getCurrentPosition: (_success: PositionCallback, failure: PositionErrorCallback) => failure({
+          code: 2,
+          message: "position unavailable",
+        } as GeolocationPositionError),
+      },
+    });
+    render(<DrivePlanner vehicle={vehicle} apiBaseUrl="http://127.0.0.1:8000" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "GPS 현재 위치" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("현재 앱을 연 브라우저에서 위치 정보를 사용할 수 없습니다");
+    expect(screen.getByRole("alert")).toHaveTextContent("Windows 위치 서비스와 이 브라우저의 위치 권한");
   });
 });

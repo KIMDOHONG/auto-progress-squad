@@ -202,7 +202,12 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
     setRouteError("");
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        void reverseApiLocation(apiBaseUrl, position.coords.longitude, position.coords.latitude)
+        const longitude = position.coords.longitude;
+        const latitude = position.coords.latitude;
+        setDeparture(`GPS ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+        setResolvedDeparture(null);
+        clearRouteLookup();
+        void reverseApiLocation(apiBaseUrl, longitude, latitude)
           .then((location) => {
             setDeparture(location.address);
             setResolvedDeparture(location);
@@ -210,18 +215,25 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
           })
           .catch((error: unknown) => {
             setResolvedDeparture(null);
-            setRouteError(error instanceof Error ? error.message : "현재 위치의 주소를 확인하지 못했습니다.");
+            const message = error instanceof Error ? error.message : "현재 위치의 주소를 확인하지 못했습니다.";
+            setRouteError(`GPS 좌표는 확인했지만 주소로 변환하지 못했습니다. ${message}`);
           })
           .finally(() => setLocationLoading(null));
       },
       (error) => {
         setLocationLoading(null);
         setResolvedDeparture(null);
-        setRouteError(error.code === error.PERMISSION_DENIED
-          ? "위치 권한이 거부되었습니다. 브라우저 권한을 허용하거나 출발지 주소를 직접 입력해 주세요."
-          : "현재 위치를 확인하지 못했습니다. 출발지 주소를 직접 입력해 주세요.");
+        if (error.code === 1) {
+          setRouteError("위치 권한이 거부되었습니다. 현재 앱을 연 브라우저의 위치 권한을 허용하거나 출발지 주소를 직접 입력해 주세요.");
+        } else if (error.code === 2) {
+          setRouteError("현재 앱을 연 브라우저에서 위치 정보를 사용할 수 없습니다. Windows 위치 서비스와 이 브라우저의 위치 권한을 확인해 주세요.");
+        } else if (error.code === 3) {
+          setRouteError("현재 위치 확인 시간이 초과되었습니다. Wi-Fi 연결과 Windows 위치 서비스를 확인한 뒤 다시 시도해 주세요.");
+        } else {
+          setRouteError("현재 위치를 확인하지 못했습니다. 출발지 주소를 직접 입력해 주세요.");
+        }
       },
-      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
+      { enableHighAccuracy: false, timeout: 20_000, maximumAge: 300_000 },
     );
   }
 
