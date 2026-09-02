@@ -1,6 +1,6 @@
 # ADR-0009: 선택형 서버 측 NAVER Maps 경로 공급자
 
-- 날짜: 2026-09-01
+- 날짜: 2026-09-01 (2026-09-02 경로 표시 확장)
 - 상태: 승인
 - 참여자: 자동차진행단 프로젝트 팀
 
@@ -17,12 +17,13 @@ Issue #5의 로컬 주행 플래너는 경로 거리를 직접 입력해 EV 에�
 ## 결정
 
 - FastAPI에 `RouteProvider` 계약과 NAVER Maps 구현을 둔다.
-- 주소는 공식 Geocoding API로 좌표화하고, 일반 승용차의 Directions 5 `trafast` 결과에서 거리와 예상 시간을 읽는다.
-- 인증 Client ID와 Client Secret은 서버 환경변수에만 둔다. 브라우저에는 인증값을 전달하지 않는다.
+- 출발지·목적지는 공식 Geocoding API로 정규 주소와 좌표를 먼저 확인한다. GPS 출발지는 Reverse Geocoding으로 사람이 확인할 수 있는 주소로 변환한다.
+- 일반 승용차의 Directions 5 `trafast`·`traoptimal`·`traavoidtoll` 결과에서 거리·예상 시간·통행료·좌표 경로를 읽고 사용자가 한 경로를 명시적으로 선택하게 한다.
+- 서버 호출용 Client ID와 Client Secret은 서버 환경변수에만 두며 브라우저에 전달하지 않는다. 실제 지도 렌더링을 켠 경우에만 별도 Dynamic Map용 공개 Client ID를 브라우저에 전달하고, 공급자 콘솔의 허용 Web 서비스 URL로 사용 범위를 제한한다.
 - 공급자 미설정, 주소 불일치, 상류 장애를 서로 다른 오류로 반환한다.
-- 프런트엔드는 실제 경로 조회를 사용자가 선택한 경우에만 호출한다. 성공하면 조회 거리를 로컬 계산에 넣고, 실패하면 오류를 표시하되 직접 입력 거리 계산을 그대로 제공한다.
+- 프런트엔드는 주소 확인과 실제 경로 조회를 사용자가 선택한 경우에만 호출한다. 성공하면 선택 경로의 거리를 로컬 계산에 넣고, Dynamic Map 키가 없거나 SDK가 실패하면 실제 좌표 경로 SVG를 대신 표시한다. 조회 실패 시 오류를 표시하되 직접 입력 거리 계산은 그대로 제공한다.
 
-공식 요청 계약은 [Geocoding](https://api.ncloud-docs.com/docs/application-maps-geocoding), [Directions 5](https://api.ncloud-docs.com/docs/application-maps-directions5), [Maps 공통 인증](https://api.ncloud-docs.com/docs/application-maps-overview)을 기준으로 한다.
+공식 요청 계약은 [Geocoding](https://api.ncloud-docs.com/docs/application-maps-geocoding), [Reverse Geocoding](https://api.ncloud-docs.com/docs/application-maps-reversegeocoding), [Directions 5](https://api.ncloud-docs.com/docs/application-maps-directions5), [Dynamic Map](https://api.ncloud-docs.com/docs/application-maps-dynamic), [Maps 공통 인증](https://api.ncloud-docs.com/docs/application-maps-overview)을 기준으로 한다.
 
 ## 근거
 
@@ -33,7 +34,7 @@ Issue #5의 로컬 주행 플래너는 경로 거리를 직접 입력해 EV 에�
 
 ## 결과와 위험
 
-- NAVER Maps 애플리케이션에서 Geocoding과 Directions 5를 모두 활성화해야 한다.
+- NAVER Maps 애플리케이션에서 Geocoding·Reverse Geocoding·Directions 5를 활성화해야 하며 실제 지도에는 Dynamic Map과 허용 Web 서비스 URL 설정도 필요하다.
 - 실제 경로는 실시간 교통 상황에 따라 같은 입력에서도 달라질 수 있다.
 - 실제 계정 키를 사용한 라이브 E2E, 계정별 무료 한도와 과금 확인은 별도 운영 검증으로 남는다.
 - 이 결정은 충전소·수소충전소·주유소 위치나 실시간 상태를 제공하지 않는다. 해당 데이터는 별도 공급자에서 연결한다.

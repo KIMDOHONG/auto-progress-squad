@@ -33,6 +33,7 @@ class Settings:
     manual_grounding_min_token_overlap: float = 0.55
     naver_maps_client_id: str | None = None
     naver_maps_client_secret: str | None = None
+    naver_maps_browser_client_id: str | None = None
     naver_maps_timeout_seconds: float = 5.0
 
     def __post_init__(self) -> None:
@@ -114,6 +115,9 @@ class Settings:
             ),
             naver_maps_client_secret=(
                 os.getenv("APS_NAVER_MAPS_CLIENT_SECRET", "").strip() or None
+            ),
+            naver_maps_browser_client_id=(
+                os.getenv("APS_NAVER_MAPS_BROWSER_CLIENT_ID", "").strip() or None
             ),
             naver_maps_timeout_seconds=float(
                 os.getenv("APS_NAVER_MAPS_TIMEOUT_SECONDS", "5")

@@ -5,30 +5,65 @@ export interface RouteLocationResult {
   latitude: number;
 }
 
-export interface RouteLookupResult {
-  departure: RouteLocationResult;
-  destination: RouteLocationResult;
+export type RouteOption = "trafast" | "traoptimal" | "traavoidtoll";
+
+export interface RouteCoordinateResult {
+  longitude: number;
+  latitude: number;
+}
+
+export interface RouteAlternativeResult {
   distanceKm: number;
   durationMinutes: number;
-  routeOption: "trafast";
+  routeOption: RouteOption;
+  tollFare: number;
+  fuelPrice: number;
+  path: RouteCoordinateResult[];
+}
+
+export interface RouteLookupResult extends RouteAlternativeResult {
+  departure: RouteLocationResult;
+  destination: RouteLocationResult;
+  alternatives: RouteAlternativeResult[];
   sourceName: string;
   sourceUrl: string;
   retrievedAt: string;
 }
 
-interface ApiRouteLookupResult {
-  departure: RouteLocationResult;
-  destination: RouteLocationResult;
+interface ApiRouteAlternativeResult {
   distance_km: number;
   duration_minutes: number;
-  route_option: "trafast";
+  route_option: RouteOption;
+  toll_fare: number;
+  fuel_price: number;
+  path: RouteCoordinateResult[];
+}
+
+interface ApiRouteLookupResult extends ApiRouteAlternativeResult {
+  departure: RouteLocationResult;
+  destination: RouteLocationResult;
+  alternatives: ApiRouteAlternativeResult[];
   source_name: string;
   source_url: string;
   retrieved_at: string;
 }
 
+interface ApiLocationLookupResult {
+  location: RouteLocationResult;
+}
+
+interface ApiMapConfigResult {
+  enabled: boolean;
+  browser_client_id: string | null;
+}
+
 interface ApiErrorPayload {
   error?: { code?: string; message?: string };
+}
+
+export interface PlannerMapConfig {
+  enabled: boolean;
+  browserClientId: string | null;
 }
 
 export class RouteApiError extends Error {
@@ -37,40 +72,113 @@ export class RouteApiError extends Error {
   }
 }
 
+async function readApiResponse<T>(response: Response, fallbackMessage: string): Promise<T> {
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as ApiErrorPayload;
+    throw new RouteApiError(
+      payload.error?.code ?? "route_api_error",
+      payload.error?.message ?? fallbackMessage,
+    );
+  }
+  return response.json() as Promise<T>;
+}
+
+async function plannerFetch<T>(
+  url: string,
+  init: RequestInit,
+  networkMessage: string,
+  fallbackMessage: string,
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch {
+    throw new RouteApiError("network_error", networkMessage);
+  }
+  return readApiResponse<T>(response, fallbackMessage);
+}
+
+function mapAlternative(payload: ApiRouteAlternativeResult): RouteAlternativeResult {
+  return {
+    distanceKm: payload.distance_km,
+    durationMinutes: payload.duration_minutes,
+    routeOption: payload.route_option,
+    tollFare: payload.toll_fare,
+    fuelPrice: payload.fuel_price,
+    path: payload.path,
+  };
+}
+
+export async function resolveApiLocation(
+  baseUrl: string,
+  query: string,
+  field: "departure" | "destination",
+): Promise<RouteLocationResult> {
+  const payload = await plannerFetch<ApiLocationLookupResult>(
+    `${baseUrl}/api/v1/planner/location/resolve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, field }),
+    },
+    "주소 확인 서버에 연결할 수 없습니다.",
+    "주소를 확인하지 못했습니다.",
+  );
+  return payload.location;
+}
+
+export async function reverseApiLocation(
+  baseUrl: string,
+  longitude: number,
+  latitude: number,
+): Promise<RouteLocationResult> {
+  const payload = await plannerFetch<ApiLocationLookupResult>(
+    `${baseUrl}/api/v1/planner/location/reverse`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ longitude, latitude }),
+    },
+    "현재 위치 주소 변환 서버에 연결할 수 없습니다.",
+    "현재 위치의 주소를 확인하지 못했습니다.",
+  );
+  return payload.location;
+}
+
+export async function getPlannerMapConfig(baseUrl: string): Promise<PlannerMapConfig> {
+  const payload = await plannerFetch<ApiMapConfigResult>(
+    `${baseUrl}/api/v1/planner/map-config`,
+    { method: "GET" },
+    "지도 설정 서버에 연결할 수 없습니다.",
+    "지도 설정을 확인하지 못했습니다.",
+  );
+  return {
+    enabled: payload.enabled,
+    browserClientId: payload.browser_client_id,
+  };
+}
+
 export async function lookupApiRoute(
   baseUrl: string,
   departure: string,
   destination: string,
 ): Promise<RouteLookupResult> {
-  let response: Response;
-  try {
-    response = await fetch(`${baseUrl}/api/v1/planner/route`, {
+  const payload = await plannerFetch<ApiRouteLookupResult>(
+    `${baseUrl}/api/v1/planner/route`,
+    {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ departure, destination }),
-    });
-  } catch {
-    throw new RouteApiError(
-      "network_error",
-      "경로 조회 서버에 연결할 수 없습니다. 직접 입력 거리로 계산해 주세요.",
-    );
-  }
+    },
+    "경로 조회 서버에 연결할 수 없습니다. 직접 입력 거리로 계산해 주세요.",
+    "실제 경로를 조회하지 못했습니다. 직접 입력 거리로 계산해 주세요.",
+  );
 
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({})) as ApiErrorPayload;
-    throw new RouteApiError(
-      payload.error?.code ?? "route_api_error",
-      payload.error?.message ?? "실제 경로를 조회하지 못했습니다. 직접 입력 거리로 계산해 주세요.",
-    );
-  }
-
-  const payload = await response.json() as ApiRouteLookupResult;
   return {
+    ...mapAlternative(payload),
     departure: payload.departure,
     destination: payload.destination,
-    distanceKm: payload.distance_km,
-    durationMinutes: payload.duration_minutes,
-    routeOption: payload.route_option,
+    alternatives: payload.alternatives.map(mapAlternative),
     sourceName: payload.source_name,
     sourceUrl: payload.source_url,
     retrievedAt: payload.retrieved_at,

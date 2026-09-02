@@ -1,13 +1,29 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { BoltIcon, FuelIcon, RouteIcon } from "../../components/Icons";
 import { calculateEvPlan, calculateRangePlan, type EvPlannerResult, type RangePlannerResult } from "../../lib/planner";
-import { lookupApiRoute, type RouteLookupResult } from "../../lib/routeApi";
+import {
+  getPlannerMapConfig,
+  lookupApiRoute,
+  resolveApiLocation,
+  reverseApiLocation,
+  type RouteAlternativeResult,
+  type RouteLocationResult,
+  type RouteLookupResult,
+  type RouteOption,
+} from "../../lib/routeApi";
 import { FUEL_GRADE_LABELS, getVehicleTitle, isEv, isHydrogen } from "../../lib/vehicle";
 import type { VehicleProfile } from "../../types";
+import { RouteMap } from "./RouteMap";
 
 interface DrivePlannerProps { vehicle: VehicleProfile; apiBaseUrl?: string; }
 
 type PlannerResult = EvPlannerResult | RangePlannerResult;
+
+const ROUTE_OPTION_LABELS: Record<RouteOption, string> = {
+  trafast: "실시간 빠른 길",
+  traoptimal: "실시간 최적",
+  traavoidtoll: "무료 우선",
+};
 
 function EvResultView({ result }: { result: EvPlannerResult }) {
   const arrivalLabel = result.arrivalSocWithoutChargePercent < 0
@@ -85,8 +101,10 @@ function ExternalDataNotice({ kind, routeLookup }: { kind: PlannerResult["kind"]
 export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
   const electric = isEv(vehicle);
   const hydrogen = isHydrogen(vehicle);
-  const [departure, setDeparture] = useState("현재 위치");
-  const [destination, setDestination] = useState("대한상공회의소 부산인력개발원");
+  const [departure, setDeparture] = useState(apiBaseUrl ? "" : "현재 위치");
+  const [destination, setDestination] = useState(apiBaseUrl ? "" : "대한상공회의소 부산인력개발원");
+  const [resolvedDeparture, setResolvedDeparture] = useState<RouteLocationResult | null>(null);
+  const [resolvedDestination, setResolvedDestination] = useState<RouteLocationResult | null>(null);
   const [routeDistance, setRouteDistance] = useState("100");
   const [batteryCapacity, setBatteryCapacity] = useState(vehicle.batteryCapacityKwh?.toString() ?? "");
   const [battery, setBattery] = useState("42");
@@ -98,7 +116,16 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
   const [routeLookup, setRouteLookup] = useState<RouteLookupResult | null>(null);
   const [routeError, setRouteError] = useState("");
   const [routeLoading, setRouteLoading] = useState(false);
+  const [locationLoading, setLocationLoading] = useState<"departure" | "destination" | "gps" | null>(null);
+  const [selectedRouteOption, setSelectedRouteOption] = useState<RouteOption>("trafast");
+  const [mapBrowserClientId, setMapBrowserClientId] = useState<string | null>(null);
   const fuelLabel = hydrogen ? "수소" : vehicle.fuelGrade ? FUEL_GRADE_LABELS[vehicle.fuelGrade] : "지정 연료";
+  const routeAlternatives: RouteAlternativeResult[] = useMemo(() => routeLookup
+    ? routeLookup.alternatives.length > 0 ? routeLookup.alternatives : [routeLookup]
+    : [], [routeLookup]);
+  const selectedRoute = routeAlternatives.find((route) => route.routeOption === selectedRouteOption)
+    ?? routeAlternatives[0]
+    ?? null;
 
   function calculateForDistance(distance: string) {
     const calculation = electric
@@ -130,18 +157,91 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
     calculateForDistance(routeDistance);
   }
 
+  function clearRouteLookup() {
+    setRouteLookup(null);
+    setSelectedRouteOption("trafast");
+    setRouteError("");
+    setMapBrowserClientId(null);
+  }
+
+  async function handleLocationResolve(field: "departure" | "destination") {
+    if (!apiBaseUrl) return;
+    const query = field === "departure" ? departure.trim() : destination.trim();
+    if (query.length < 2) {
+      setRouteError(`${field === "departure" ? "출발지" : "목적지"}의 정확한 도로명 주소를 2자 이상 입력해 주세요.`);
+      return;
+    }
+    setLocationLoading(field);
+    setRouteError("");
+    try {
+      const location = await resolveApiLocation(apiBaseUrl, query, field);
+      if (field === "departure") {
+        setDeparture(location.address);
+        setResolvedDeparture(location);
+      } else {
+        setDestination(location.address);
+        setResolvedDestination(location);
+      }
+      clearRouteLookup();
+    } catch (error) {
+      if (field === "departure") setResolvedDeparture(null);
+      else setResolvedDestination(null);
+      setRouteError(error instanceof Error ? error.message : "주소를 확인하지 못했습니다.");
+    } finally {
+      setLocationLoading(null);
+    }
+  }
+
+  function handleCurrentLocation() {
+    if (!apiBaseUrl) return;
+    if (!navigator.geolocation) {
+      setRouteError("이 브라우저에서는 GPS 현재 위치를 사용할 수 없습니다. 출발지 주소를 직접 입력해 주세요.");
+      return;
+    }
+    setLocationLoading("gps");
+    setRouteError("");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        void reverseApiLocation(apiBaseUrl, position.coords.longitude, position.coords.latitude)
+          .then((location) => {
+            setDeparture(location.address);
+            setResolvedDeparture(location);
+            clearRouteLookup();
+          })
+          .catch((error: unknown) => {
+            setResolvedDeparture(null);
+            setRouteError(error instanceof Error ? error.message : "현재 위치의 주소를 확인하지 못했습니다.");
+          })
+          .finally(() => setLocationLoading(null));
+      },
+      (error) => {
+        setLocationLoading(null);
+        setResolvedDeparture(null);
+        setRouteError(error.code === error.PERMISSION_DENIED
+          ? "위치 권한이 거부되었습니다. 브라우저 권한을 허용하거나 출발지 주소를 직접 입력해 주세요."
+          : "현재 위치를 확인하지 못했습니다. 출발지 주소를 직접 입력해 주세요.");
+      },
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
+    );
+  }
+
   async function handleRouteLookup() {
     if (!apiBaseUrl) return;
-    if (departure.trim().length < 2 || destination.trim().length < 2) {
-      setRouteError("출발지와 목적지를 각각 2자 이상 입력해 주세요. 직접 입력 거리 계산은 계속 사용할 수 있습니다.");
+    if (!resolvedDeparture || !resolvedDestination) {
+      setRouteError("출발지와 목적지의 주소 확인을 먼저 완료해 주세요. 직접 입력 거리 계산은 계속 사용할 수 있습니다.");
       return;
     }
     setRouteLoading(true);
     setRouteError("");
     try {
-      const lookup = await lookupApiRoute(apiBaseUrl, departure.trim(), destination.trim());
+      const [lookup, mapConfig] = await Promise.all([
+        lookupApiRoute(apiBaseUrl, resolvedDeparture.address, resolvedDestination.address),
+        getPlannerMapConfig(apiBaseUrl).catch(() => ({ enabled: false, browserClientId: null })),
+      ]);
       const distance = String(lookup.distanceKm);
       setRouteLookup(lookup);
+      setSelectedRouteOption(lookup.routeOption);
+      setMapBrowserClientId(mapConfig.enabled ? mapConfig.browserClientId : null);
       setRouteDistance(distance);
       calculateForDistance(distance);
     } catch (error) {
@@ -150,6 +250,13 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
     } finally {
       setRouteLoading(false);
     }
+  }
+
+  function selectRoute(route: RouteAlternativeResult) {
+    setSelectedRouteOption(route.routeOption);
+    const distance = String(route.distanceKm);
+    setRouteDistance(distance);
+    calculateForDistance(distance);
   }
 
   return (
@@ -164,10 +271,32 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
       </div>
 
       <form className="planner-form" onSubmit={handleSubmit} noValidate>
-        <p className="planner-mode-note"><strong>{apiBaseUrl ? "선택형 경로 조회" : "수동 거리 모드"}</strong>{apiBaseUrl ? " 실제 경로 조회에 성공하면 조회 거리를 자동 입력하고 계산합니다. 실패해도 직접 입력 거리 계산은 유지됩니다." : " 출발지와 목적지는 경로 메모이며, 현재 계산에는 직접 입력한 거리만 사용합니다."}</p>
-        <div className="form-grid route-inputs">
-          <label htmlFor="planner-departure">{apiBaseUrl ? "출발지 주소" : "출발지 메모"}<input id="planner-departure" value={departure} onChange={(event) => { setDeparture(event.target.value); setRouteLookup(null); setRouteError(""); }} /></label>
-          <label htmlFor="planner-destination">{apiBaseUrl ? "목적지 주소" : "목적지 메모"}<input id="planner-destination" value={destination} onChange={(event) => { setDestination(event.target.value); setRouteLookup(null); setRouteError(""); }} /></label>
+        <p className="planner-mode-note"><strong>{apiBaseUrl ? "정확한 주소 기반 경로 조회" : "수동 거리 모드"}</strong>{apiBaseUrl ? " 도로명과 건물번호를 확인한 뒤 실제 경로를 조회합니다. 실패해도 직접 입력 거리 계산은 유지됩니다." : " 출발지와 목적지는 경로 메모이며, 현재 계산에는 직접 입력한 거리만 사용합니다."}</p>
+        {apiBaseUrl ? (
+          <div className="address-grid">
+            <div className="address-field-group">
+              <label htmlFor="planner-departure">출발지 정확한 주소<input id="planner-departure" placeholder="예: 부산광역시 연제구 중앙대로 1001" value={departure} onChange={(event) => { setDeparture(event.target.value); setResolvedDeparture(null); clearRouteLookup(); }} /></label>
+              <div className="address-actions">
+                <button type="button" className="inline-button" disabled={locationLoading !== null} onClick={() => void handleLocationResolve("departure")}>{locationLoading === "departure" ? "주소 확인 중…" : "출발지 주소 확인"}</button>
+                <button type="button" className="inline-button location-button" disabled={locationLoading !== null} onClick={handleCurrentLocation}>{locationLoading === "gps" ? "현재 위치 확인 중…" : "GPS 현재 위치"}</button>
+              </div>
+              <span className={resolvedDeparture ? "address-confirmed" : "address-unconfirmed"}>{resolvedDeparture ? `확인됨 · ${resolvedDeparture.address}` : "주소 확인이 필요합니다."}</span>
+            </div>
+            <div className="address-field-group">
+              <label htmlFor="planner-destination">목적지 정확한 주소<input id="planner-destination" placeholder="예: 경상남도 창원시 의창구 중앙대로 300" value={destination} onChange={(event) => { setDestination(event.target.value); setResolvedDestination(null); clearRouteLookup(); }} /></label>
+              <div className="address-actions">
+                <button type="button" className="inline-button" disabled={locationLoading !== null} onClick={() => void handleLocationResolve("destination")}>{locationLoading === "destination" ? "주소 확인 중…" : "목적지 주소 확인"}</button>
+              </div>
+              <span className={resolvedDestination ? "address-confirmed" : "address-unconfirmed"}>{resolvedDestination ? `확인됨 · ${resolvedDestination.address}` : "주소 확인이 필요합니다."}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="form-grid route-inputs">
+            <label htmlFor="planner-departure">출발지 메모<input id="planner-departure" value={departure} onChange={(event) => { setDeparture(event.target.value); clearRouteLookup(); }} /></label>
+            <label htmlFor="planner-destination">목적지 메모<input id="planner-destination" value={destination} onChange={(event) => { setDestination(event.target.value); clearRouteLookup(); }} /></label>
+          </div>
+        )}
+        <div className="form-grid route-inputs planner-measurements">
           <label htmlFor="planner-distance">경로 거리<input id="planner-distance" type="number" min="0.1" step="0.1" value={routeDistance} onChange={(event) => { setRouteDistance(event.target.value); setRouteLookup(null); }} /><span className="input-suffix" aria-hidden="true">km</span></label>
           {electric ? (
             <>
@@ -183,8 +312,19 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
             </>
           )}
         </div>
-        {routeLookup ? <div className="route-lookup-status" role="status"><strong>{routeLookup.sourceName} 실제 경로</strong><span>{routeLookup.distanceKm} km · 약 {routeLookup.durationMinutes}분</span><span>{routeLookup.departure.address} → {routeLookup.destination.address}</span></div> : null}
-        {routeError ? <div className="route-lookup-error" role="alert"><strong>실제 경로 조회 실패</strong><span>{routeError}</span></div> : null}
+        {routeLookup && selectedRoute ? <div className="route-lookup-status" role="status"><strong>{routeLookup.sourceName} · {ROUTE_OPTION_LABELS[selectedRoute.routeOption]}</strong><span>{selectedRoute.distanceKm} km · 약 {selectedRoute.durationMinutes}분 · 통행료 {selectedRoute.tollFare.toLocaleString()}원</span><span>{routeLookup.departure.address} → {routeLookup.destination.address}</span></div> : null}
+        {routeAlternatives.length > 1 ? (
+          <div className="route-alternatives" aria-label="조회된 실제 경로 선택">
+            {routeAlternatives.map((route) => (
+              <button key={route.routeOption} type="button" className={route.routeOption === selectedRouteOption ? "route-option selected" : "route-option"} aria-pressed={route.routeOption === selectedRouteOption} onClick={() => selectRoute(route)}>
+                <strong>{ROUTE_OPTION_LABELS[route.routeOption]}</strong>
+                <span>{route.distanceKm}km · 약 {route.durationMinutes}분</span>
+                <small>통행료 {route.tollFare.toLocaleString()}원</small>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {routeError ? <div className="route-lookup-error" role="alert"><strong>주소·경로 확인 실패</strong><span>{routeError}</span></div> : null}
         {errors.length > 0 ? <div className="planner-errors" role="alert"><strong>입력값을 확인해 주세요.</strong><ul>{errors.map((error) => <li key={error}>{error}</li>)}</ul></div> : null}
         <div className="planner-actions">
           <button type="submit" className="primary-button"><RouteIcon />직접 입력 거리로 계산</button>
@@ -193,11 +333,18 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
       </form>
 
       <div className="planner-content">
-        <div className="route-canvas" aria-label="수동 거리 경로 요약">
-          <div className="route-line" />
-          <span className="map-point start">출발</span><span className="map-point middle">경로</span><span className="map-point end">도착</span>
-          <div className="map-empty-state"><RouteIcon /><strong>{routeLookup ? `${routeLookup.sourceName} 실제 경로` : "직접 입력 거리"}</strong><span>{departure || "출발지 미입력"} → {destination || "목적지 미입력"} · {routeDistance || 0} km{routeLookup ? ` · 약 ${routeLookup.durationMinutes}분` : ""}</span></div>
-        </div>
+        {routeLookup && selectedRoute ? (
+          <div className="route-canvas route-canvas-live">
+            <RouteMap routes={routeAlternatives} selectedOption={selectedRoute.routeOption} browserClientId={mapBrowserClientId} />
+            <div className="map-route-summary"><strong>{ROUTE_OPTION_LABELS[selectedRoute.routeOption]}</strong><span>{routeLookup.departure.address} → {routeLookup.destination.address}</span><span>{selectedRoute.distanceKm}km · 약 {selectedRoute.durationMinutes}분</span></div>
+          </div>
+        ) : (
+          <div className="route-canvas" aria-label="수동 거리 경로 요약">
+            <div className="route-line" />
+            <span className="map-point start">출발</span><span className="map-point middle">경로</span><span className="map-point end">도착</span>
+            <div className="map-empty-state"><RouteIcon /><strong>직접 입력 거리</strong><span>{departure || "출발지 미입력"} → {destination || "목적지 미입력"} · {routeDistance || 0} km</span></div>
+          </div>
+        )}
 
         <aside className="planner-results" aria-label="로컬 플래너 계산 결과" aria-live="polite">
           <div className="result-header"><span className="local-badge">{routeLookup ? "API 거리 + 로컬 계산" : "로컬 계산"}</span><strong>{result ? "계산 완료" : "입력 후 계산해 주세요"}</strong></div>

@@ -57,6 +57,12 @@ from .schemas import (
     ManualIngestionStatus,
     RecallListResponse,
     RecallQueryScope,
+    PlannerMapConfigResponse,
+    RouteAlternativeResponse,
+    RouteCoordinateResponse,
+    RouteLocationLookupResponse,
+    RouteLocationResolveRequest,
+    RouteLocationReverseRequest,
     RouteLocationResponse,
     RouteLookupRequest,
     RouteLookupResponse,
@@ -128,6 +134,98 @@ def health(request: Request) -> HealthResponse:
 
 
 @router.post(
+    "/planner/location/resolve",
+    response_model=RouteLocationLookupResponse,
+    responses={422: {"model": ApiErrorResponse}, 503: {"model": ApiErrorResponse}},
+    tags=["planner"],
+)
+def resolve_planner_location(
+    request: Request, payload: RouteLocationResolveRequest
+) -> RouteLocationLookupResponse:
+    provider = getattr(request.app.state, "route_provider", None)
+    if provider is None:
+        raise ServiceNotConfiguredError(
+            code="route_source_not_configured",
+            message="주소 확인 API가 설정되지 않았습니다. 직접 입력 거리로 계산해 주세요.",
+        )
+    try:
+        location = provider.resolve_location(payload.query.strip(), payload.field)
+    except RouteLocationNotFoundError as error:
+        field_label = "출발지" if error.field == "departure" else "목적지"
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "route_location_not_found",
+            f"{field_label} 주소를 찾을 수 없습니다. 도로명과 건물번호까지 입력해 주세요.",
+            details=[{"field": error.field}],
+        ) from None
+    except RouteProviderError:
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "route_source_unavailable",
+            "주소를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+            retryable=True,
+        ) from None
+    return RouteLocationLookupResponse(
+        location=RouteLocationResponse(**asdict(location)),
+        source_name=provider.source_name,
+        source_url=provider.source_url,
+        retrieved_at=datetime.now(UTC).isoformat(),
+    )
+
+
+@router.post(
+    "/planner/location/reverse",
+    response_model=RouteLocationLookupResponse,
+    responses={422: {"model": ApiErrorResponse}, 503: {"model": ApiErrorResponse}},
+    tags=["planner"],
+)
+def reverse_planner_location(
+    request: Request, payload: RouteLocationReverseRequest
+) -> RouteLocationLookupResponse:
+    provider = getattr(request.app.state, "route_provider", None)
+    if provider is None:
+        raise ServiceNotConfiguredError(
+            code="route_source_not_configured",
+            message="현재 위치 주소 변환 API가 설정되지 않았습니다. 주소를 직접 입력해 주세요.",
+        )
+    try:
+        location = provider.reverse_location(payload.longitude, payload.latitude)
+    except RouteLocationNotFoundError:
+        raise ApiError(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "route_location_not_found",
+            "현재 위치의 주소를 찾을 수 없습니다. 출발지 주소를 직접 입력해 주세요.",
+            details=[{"field": "departure"}],
+        ) from None
+    except RouteProviderError:
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "route_source_unavailable",
+            "현재 위치 주소를 확인할 수 없습니다. 출발지 주소를 직접 입력해 주세요.",
+            retryable=True,
+        ) from None
+    return RouteLocationLookupResponse(
+        location=RouteLocationResponse(**asdict(location)),
+        source_name=provider.source_name,
+        source_url=provider.source_url,
+        retrieved_at=datetime.now(UTC).isoformat(),
+    )
+
+
+@router.get(
+    "/planner/map-config",
+    response_model=PlannerMapConfigResponse,
+    tags=["planner"],
+)
+def planner_map_config(request: Request) -> PlannerMapConfigResponse:
+    client_id = request.app.state.settings.naver_maps_browser_client_id
+    return PlannerMapConfigResponse(
+        enabled=bool(client_id),
+        browser_client_id=client_id,
+    )
+
+
+@router.post(
     "/planner/route",
     response_model=RouteLookupResponse,
     responses={422: {"model": ApiErrorResponse}, 503: {"model": ApiErrorResponse}},
@@ -167,6 +265,25 @@ def lookup_planner_route(
         distance_km=round(route.distance_meters / 1000, 1),
         duration_minutes=max(1, round(route.duration_milliseconds / 60_000)),
         route_option=route.route_option,
+        toll_fare=route.toll_fare,
+        fuel_price=route.fuel_price,
+        path=[RouteCoordinateResponse(**asdict(point)) for point in route.path],
+        alternatives=[
+            RouteAlternativeResponse(
+                distance_km=round(alternative.distance_meters / 1000, 1),
+                duration_minutes=max(
+                    1, round(alternative.duration_milliseconds / 60_000)
+                ),
+                route_option=alternative.route_option,
+                toll_fare=alternative.toll_fare,
+                fuel_price=alternative.fuel_price,
+                path=[
+                    RouteCoordinateResponse(**asdict(point))
+                    for point in alternative.path
+                ],
+            )
+            for alternative in route.alternatives
+        ],
         source_name=provider.source_name,
         source_url=provider.source_url,
         retrieved_at=datetime.now(UTC).isoformat(),

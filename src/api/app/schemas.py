@@ -264,6 +264,16 @@ class RouteLookupRequest(BaseModel):
     destination: str = Field(min_length=2, max_length=200)
 
 
+class RouteLocationResolveRequest(BaseModel):
+    query: str = Field(min_length=2, max_length=200)
+    field: Literal["departure", "destination"] = "departure"
+
+
+class RouteLocationReverseRequest(BaseModel):
+    longitude: float = Field(ge=-180, le=180)
+    latitude: float = Field(ge=-90, le=90)
+
+
 class RouteLocationResponse(BaseModel):
     query: str
     address: str
@@ -271,12 +281,45 @@ class RouteLocationResponse(BaseModel):
     latitude: float
 
 
+RouteOption = Literal["trafast", "traoptimal", "traavoidtoll"]
+
+
+class RouteCoordinateResponse(BaseModel):
+    longitude: float
+    latitude: float
+
+
+class RouteAlternativeResponse(BaseModel):
+    distance_km: float
+    duration_minutes: int
+    route_option: RouteOption
+    toll_fare: int
+    fuel_price: int
+    path: list[RouteCoordinateResponse]
+
+
+class RouteLocationLookupResponse(BaseModel):
+    location: RouteLocationResponse
+    source_name: str
+    source_url: str
+    retrieved_at: str
+
+
+class PlannerMapConfigResponse(BaseModel):
+    enabled: bool
+    browser_client_id: str | None
+
+
 class RouteLookupResponse(BaseModel):
     departure: RouteLocationResponse
     destination: RouteLocationResponse
     distance_km: float
     duration_minutes: int
-    route_option: Literal["trafast"]
+    route_option: RouteOption
+    toll_fare: int
+    fuel_price: int
+    path: list[RouteCoordinateResponse]
+    alternatives: list[RouteAlternativeResponse]
     source_name: str
     source_url: str
     retrieved_at: str
