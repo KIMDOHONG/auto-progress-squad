@@ -79,8 +79,33 @@ describe("vehicle-aware planner", () => {
     const dialog = within(screen.getByRole("dialog", { name: "내 차량 관리" }));
     fireEvent.click(dialog.getAllByRole("button", { name: "수정" })[2]);
     fireEvent.change(dialog.getByRole("textbox", { name: "모델 *" }), { target: { value: "M3 Competition" } });
+    fireEvent.change(dialog.getByRole("textbox", { name: "세부 구동 사양 *" }), { target: { value: "3.0 가솔린" } });
+    fireEvent.change(dialog.getByRole("textbox", { name: "트림 *" }), { target: { value: "Competition" } });
     fireEvent.click(dialog.getByRole("button", { name: "변경 저장" }));
     expect(await screen.findByRole("option", { name: "BMW M3 Competition · 2021" })).toBeInTheDocument();
+  });
+
+  it("applies a verified battery capacity from the selected EV configuration", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "차량 프로필 관리" }));
+    const dialog = within(screen.getByRole("dialog", { name: "내 차량 관리" }));
+    fireEvent.click(dialog.getAllByRole("button", { name: "수정" })[2]);
+    fireEvent.change(dialog.getByRole("textbox", { name: "제조사 *" }), { target: { value: "기아" } });
+    fireEvent.change(dialog.getByRole("textbox", { name: "모델 *" }), { target: { value: "더 뉴 EV6" } });
+    fireEvent.change(dialog.getByRole("spinbutton", { name: "연식 *" }), { target: { value: "2027" } });
+    fireEvent.change(dialog.getByRole("combobox", { name: "동력원 *" }), { target: { value: "electric" } });
+    fireEvent.change(dialog.getByRole("combobox", { name: "세부 구동 사양 *" }), { target: { value: "롱레인지 4WD" } });
+    fireEvent.change(dialog.getByRole("combobox", { name: "트림 *" }), { target: { value: "GT-Line" } });
+
+    expect(dialog.getByRole("textbox", { name: "배터리 용량" })).toHaveValue("84 kWh");
+    expect(dialog.getByRole("link", { name: /공식 제원/ })).toHaveAttribute("href", "https://www.kia.com/kr/vehicles/ev6/price");
+    fireEvent.click(dialog.getByRole("button", { name: "변경 저장" }));
+
+    expect(await screen.findByRole("option", { name: "기아 더 뉴 EV6 · 2027" })).toBeInTheDocument();
+    fireEvent.click(dialog.getByRole("button", { name: "닫기" }));
+    fireEvent.change(screen.getByLabelText("활성 차량"), { target: { value: "sample-bmwm3" } });
+    fireEvent.click((await screen.findAllByRole("button", { name: /EV 충전 플래너/ }))[0]);
+    expect(screen.getByLabelText(/사용 가능 배터리 용량/)).toHaveValue(84);
   });
 
   it("migrates the unchanged v1 demo presets to the new three-vehicle set", () => {
@@ -215,6 +240,8 @@ describe("vehicle-aware planner", () => {
     expect(await screen.findByText("같은 연식에 여러 세대가 있어 차량 이미지를 보고 선택해 주세요.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "2020 K5 JF 선택" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "2020 K5 DL3 선택" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "세부 구동 사양 *" }), { target: { value: "2.0 가솔린" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "트림 *" }), { target: { value: "노블레스" } });
     fireEvent.click(await screen.findByRole("button", { name: "프로필 등록" }));
 
     expect(await screen.findByRole("option", { name: "기아 K5 · 2020" })).toBeInTheDocument();
@@ -244,6 +271,8 @@ describe("vehicle-aware planner", () => {
     fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "2020 기아 K5 등록" } });
     fireEvent.click(screen.getByRole("button", { name: "메시지 전송" }));
     fireEvent.click(await screen.findByRole("button", { name: "2020 K5 DL3 선택" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "세부 구동 사양 *" }), { target: { value: "2.0 가솔린" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "트림 *" }), { target: { value: "노블레스" } });
     fireEvent.click(await screen.findByRole("button", { name: "기존 차량 교체 후 등록" }));
 
     expect(await screen.findAllByText(/현재 프로필이 3대이고 최대 3대까지 등록할 수 있습니다/)).toHaveLength(2);

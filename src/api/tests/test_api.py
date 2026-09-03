@@ -243,6 +243,44 @@ def test_vehicle_crud_and_active_selection(client: TestClient) -> None:
     assert remaining["active_vehicle_id"] == "ioniq5"
 
 
+def test_vehicle_configuration_and_specification_source_are_persisted(
+    client: TestClient,
+) -> None:
+    payload = vehicle_payload("ev6-2027", "EV6")
+    payload.update(
+        {
+            "manufacturer": "기아",
+            "model_year": 2027,
+            "trim": "GT-Line",
+            "powertrain_detail": "롱레인지 4WD",
+            "specification_source_url": "https://www.kia.com/kr/vehicles/ev6/price",
+            "specification_verified_at": "2026-09-03",
+        }
+    )
+
+    created = client.post("/api/v1/vehicles", json=payload)
+
+    assert created.status_code == 201
+    assert created.json()["trim"] == "GT-Line"
+    assert created.json()["powertrain_detail"] == "롱레인지 4WD"
+    assert created.json()["battery_capacity_kwh"] == 84
+    listed = client.get("/api/v1/vehicles").json()["items"][0]
+    assert listed["specification_source_url"] == payload["specification_source_url"]
+    assert listed["specification_verified_at"] == "2026-09-03"
+
+
+def test_vehicle_specification_source_requires_a_paired_verification_date(
+    client: TestClient,
+) -> None:
+    payload = vehicle_payload("unpaired-spec-source")
+    payload["specification_source_url"] = "https://www.hyundai.com/"
+
+    response = client.post("/api/v1/vehicles", json=payload)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
 def test_vehicle_limit_and_last_vehicle_guards(client: TestClient) -> None:
     for index in range(3):
         response = client.post(
@@ -463,6 +501,10 @@ def test_schema_v2_migration_preserves_profiles_and_adds_hydrogen(tmp_path: Path
         assert "manual_image_url" in columns
         assert "manual_title" in columns
         assert "manual_source_url" in columns
+        assert "trim" in columns
+        assert "powertrain_detail" in columns
+        assert "specification_source_url" in columns
+        assert "specification_verified_at" in columns
         ingestion_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(manual_ingestion_jobs)")
         }

@@ -81,8 +81,12 @@ export interface VehicleProfile {
   model: string;
   modelYear: number;
   powertrain: Powertrain;
+  trim?: string;
+  powertrainDetail?: string;
   fuelGrade?: FuelGrade;
   batteryCapacityKwh?: number;
+  specificationSourceUrl?: string;
+  specificationVerifiedAt?: string;
   manual?: OfficialManualMetadata;
 }
 
@@ -94,6 +98,8 @@ export interface VehicleDraft {
   model: string;
   modelYear: string;
   powertrain: Powertrain;
+  trim: string;
+  powertrainDetail: string;
   fuelGrade: FuelGrade;
   batteryCapacityKwh: string;
 }

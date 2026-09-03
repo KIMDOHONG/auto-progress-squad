@@ -24,6 +24,8 @@ export const DEFAULT_VEHICLES: VehicleProfile[] = [
     model: "넥쏘",
     modelYear: 2021,
     powertrain: "hydrogen",
+    trim: "세부 트림 미확인",
+    powertrainDetail: "수소전기차 사양 미확인",
     manual: {
       siteId: "hmc",
       modelName: "넥쏘",
@@ -40,7 +42,11 @@ export const DEFAULT_VEHICLES: VehicleProfile[] = [
     model: "ELECTRIFIED GV70",
     modelYear: 2027,
     powertrain: "electric",
+    trim: "기본형",
+    powertrainDetail: "듀얼모터 AWD",
     batteryCapacityKwh: 84,
+    specificationSourceUrl: "https://www.genesis.com/kr/ko/models/electrified-gv70",
+    specificationVerifiedAt: "2026-09-03",
     manual: {
       siteId: "genesis",
       modelName: "ELECTRIFIED GV70",
@@ -57,6 +63,8 @@ export const DEFAULT_VEHICLES: VehicleProfile[] = [
     model: "M3",
     modelYear: 2021,
     powertrain: "gasoline",
+    trim: "세부 트림 미확인",
+    powertrainDetail: "가솔린 사양 미확인",
     fuelGrade: "premium",
   },
 ];

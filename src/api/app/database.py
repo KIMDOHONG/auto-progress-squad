@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 class VehicleLimitReachedError(Exception):
@@ -52,12 +52,16 @@ def initialize_database(database_path: Path) -> None:
                 powertrain TEXT NOT NULL CHECK (
                     powertrain IN ('electric', 'hydrogen', 'gasoline', 'diesel', 'hybrid')
                 ),
+                trim TEXT,
+                powertrain_detail TEXT,
                 fuel_grade TEXT CHECK (
                     fuel_grade IS NULL OR fuel_grade IN (
                         'regular', 'premium', 'super-premium', 'diesel', 'high-cetane'
                     )
                 ),
                 battery_capacity_kwh REAL,
+                specification_source_url TEXT,
+                specification_verified_at TEXT,
                 manual_site_id TEXT,
                 manual_model_name TEXT,
                 manual_project_code TEXT,
@@ -95,12 +99,16 @@ def initialize_database(database_path: Path) -> None:
                     powertrain TEXT NOT NULL CHECK (
                         powertrain IN ('electric', 'hydrogen', 'gasoline', 'diesel', 'hybrid')
                     ),
+                    trim TEXT,
+                    powertrain_detail TEXT,
                     fuel_grade TEXT CHECK (
                         fuel_grade IS NULL OR fuel_grade IN (
                             'regular', 'premium', 'super-premium', 'diesel', 'high-cetane'
                         )
                     ),
                     battery_capacity_kwh REAL,
+                    specification_source_url TEXT,
+                    specification_verified_at TEXT,
                     manual_site_id TEXT,
                     manual_model_name TEXT,
                     manual_project_code TEXT,
@@ -133,6 +141,10 @@ def initialize_database(database_path: Path) -> None:
             for row in connection.execute("PRAGMA table_info(vehicle_profiles)").fetchall()
         }
         manual_columns = {
+            "trim": "TEXT",
+            "powertrain_detail": "TEXT",
+            "specification_source_url": "TEXT",
+            "specification_verified_at": "TEXT",
             "manual_site_id": "TEXT",
             "manual_model_name": "TEXT",
             "manual_project_code": "TEXT",
@@ -333,7 +345,8 @@ def list_vehicle_rows(database_path: Path) -> list[sqlite3.Row]:
         return connection.execute(
             """
             SELECT id, nickname, manufacturer, model, model_year, powertrain,
-                   fuel_grade, battery_capacity_kwh, manual_site_id,
+                   trim, powertrain_detail, fuel_grade, battery_capacity_kwh,
+                   specification_source_url, specification_verified_at, manual_site_id,
                    manual_model_name, manual_project_code, manual_generation,
                    manual_model_year, manual_image_url, manual_title,
                    manual_source_url, manual_verified_at, is_active
@@ -348,7 +361,8 @@ def get_vehicle_row(database_path: Path, vehicle_id: str) -> sqlite3.Row:
         row = connection.execute(
             """
             SELECT id, nickname, manufacturer, model, model_year, powertrain,
-                   fuel_grade, battery_capacity_kwh, manual_site_id,
+                   trim, powertrain_detail, fuel_grade, battery_capacity_kwh,
+                   specification_source_url, specification_verified_at, manual_site_id,
                    manual_model_name, manual_project_code, manual_generation,
                    manual_model_year, manual_image_url, manual_title,
                    manual_source_url, manual_verified_at, is_active
@@ -372,13 +386,15 @@ def create_vehicle(database_path: Path, values: dict[str, object]) -> sqlite3.Ro
             """
             INSERT INTO vehicle_profiles (
                 id, nickname, manufacturer, model, model_year, powertrain,
-                fuel_grade, battery_capacity_kwh, manual_site_id,
+                trim, powertrain_detail, fuel_grade, battery_capacity_kwh,
+                specification_source_url, specification_verified_at, manual_site_id,
                 manual_model_name, manual_project_code, manual_generation,
                 manual_model_year, manual_image_url, manual_title,
                 manual_source_url, manual_verified_at, is_active
             ) VALUES (
                 :id, :nickname, :manufacturer, :model, :model_year, :powertrain,
-                :fuel_grade, :battery_capacity_kwh, :manual_site_id,
+                :trim, :powertrain_detail, :fuel_grade, :battery_capacity_kwh,
+                :specification_source_url, :specification_verified_at, :manual_site_id,
                 :manual_model_name, :manual_project_code, :manual_generation,
                 :manual_model_year, :manual_image_url, :manual_title,
                 :manual_source_url, :manual_verified_at, :is_active
@@ -403,8 +419,12 @@ def update_vehicle(
                 model = :model,
                 model_year = :model_year,
                 powertrain = :powertrain,
+                trim = :trim,
+                powertrain_detail = :powertrain_detail,
                 fuel_grade = :fuel_grade,
                 battery_capacity_kwh = :battery_capacity_kwh,
+                specification_source_url = :specification_source_url,
+                specification_verified_at = :specification_verified_at,
                 manual_site_id = :manual_site_id,
                 manual_model_name = :manual_model_name,
                 manual_project_code = :manual_project_code,

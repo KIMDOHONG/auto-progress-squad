@@ -37,8 +37,12 @@ class VehicleProfile(BaseModel):
     model: str
     model_year: int
     powertrain: Powertrain
+    trim: str | None = None
+    powertrain_detail: str | None = None
     fuel_grade: FuelGrade | None = None
     battery_capacity_kwh: float | None = None
+    specification_source_url: str | None = None
+    specification_verified_at: str | None = None
     manual_site_id: ManualSiteId | None = None
     manual_model_name: str | None = None
     manual_project_code: str | None = None
@@ -57,8 +61,12 @@ class VehiclePayload(BaseModel):
     model: str = Field(min_length=1, max_length=80)
     model_year: int = Field(ge=1990, le=2100)
     powertrain: Powertrain
+    trim: str | None = Field(default=None, min_length=1, max_length=120)
+    powertrain_detail: str | None = Field(default=None, min_length=1, max_length=160)
     fuel_grade: FuelGrade | None = None
     battery_capacity_kwh: float | None = Field(default=None, gt=0, le=500)
+    specification_source_url: str | None = Field(default=None, max_length=1000)
+    specification_verified_at: str | None = Field(default=None, max_length=80)
     manual_site_id: ManualSiteId | None = None
     manual_model_name: str | None = Field(default=None, max_length=120)
     manual_project_code: str | None = Field(default=None, max_length=40)
@@ -71,6 +79,10 @@ class VehiclePayload(BaseModel):
 
     @model_validator(mode="after")
     def validate_energy_fields(self) -> "VehiclePayload":
+        if (self.specification_source_url is None) != (self.specification_verified_at is None):
+            raise ValueError("공식 차량 제원 출처와 확인일은 함께 저장해야 합니다.")
+        if self.specification_source_url is not None and not self.specification_source_url.startswith("https://"):
+            raise ValueError("공식 차량 제원 출처는 HTTPS URL이어야 합니다.")
         if self.powertrain == "electric" and self.fuel_grade is not None:
             raise ValueError("전기차에는 지정 연료를 설정할 수 없습니다.")
         if self.powertrain == "hydrogen" and self.fuel_grade is not None:

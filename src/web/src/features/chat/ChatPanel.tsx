@@ -8,6 +8,7 @@ import {
 } from "../../lib/officialVehicle";
 import { resolveRecallTarget } from "../../lib/recallTarget";
 import { FUEL_GRADE_LABELS, POWERTRAIN_LABELS, getVehicleTitle } from "../../lib/vehicle";
+import { findVehicleSpecifications, resolveVehicleSpecification } from "../../lib/vehicleSpecifications";
 import { getApiRecalls, VehicleApiError } from "../../lib/vehicleApi";
 import type { AppView, FuelGrade, Powertrain, RecallLookupResult, VehicleProfile } from "../../types";
 
@@ -23,6 +24,11 @@ interface RegistrationDraft {
   candidate: OfficialVehicleCandidate;
   nickname: string;
   powertrain: Powertrain;
+  trim: string;
+  powertrainDetail: string;
+  batteryCapacityKwh?: number;
+  specificationSourceUrl?: string;
+  specificationVerifiedAt?: string;
   fuelGrade?: FuelGrade;
 }
 
@@ -127,6 +133,11 @@ function createVehicleProfile(draft: RegistrationDraft): VehicleProfile {
     model: draft.candidate.modelName,
     modelYear: draft.candidate.modelYear,
     powertrain: draft.powertrain,
+    trim: draft.trim,
+    powertrainDetail: draft.powertrainDetail,
+    ...(draft.batteryCapacityKwh ? { batteryCapacityKwh: draft.batteryCapacityKwh } : {}),
+    ...(draft.specificationSourceUrl ? { specificationSourceUrl: draft.specificationSourceUrl } : {}),
+    ...(draft.specificationVerifiedAt ? { specificationVerifiedAt: draft.specificationVerifiedAt } : {}),
     ...(draft.fuelGrade ? { fuelGrade: draft.fuelGrade } : {}),
     manual: toManualMetadata(draft.candidate),
   };
@@ -169,21 +180,75 @@ function VehicleCandidateCards({ candidates, onSelect }: { candidates: OfficialV
 function VehicleConfirmation({ candidate, isFull, disabled, onCancel, onConfirm }: VehicleConfirmationProps) {
   const [nickname, setNickname] = useState(`${candidate.modelName} ${candidate.modelYear}`);
   const [powertrain, setPowertrain] = useState<Powertrain>(candidate.suggestedPowertrain);
+  const [trim, setTrim] = useState("");
+  const [powertrainDetail, setPowertrainDetail] = useState("");
+  const [batteryCapacityKwh, setBatteryCapacityKwh] = useState("");
   const [fuelGrade, setFuelGrade] = useState<FuelGrade>(candidate.suggestedPowertrain === "diesel" ? "diesel" : "regular");
+  const matchingSpecifications = findVehicleSpecifications(
+    candidate.manufacturer,
+    candidate.modelName,
+    candidate.modelYear,
+    powertrain,
+  );
+  const selectedSpecification = resolveVehicleSpecification(
+    candidate.manufacturer,
+    candidate.modelName,
+    candidate.modelYear,
+    powertrain,
+    powertrainDetail,
+    trim,
+  );
+  const catalogTrims = matchingSpecifications
+    .find((item) => item.powertrainDetail === powertrainDetail)?.trims ?? [];
+  const hasRequiredDetails = trim.trim().length > 0
+    && powertrainDetail.trim().length > 0
+    && (powertrain !== "electric" || Boolean(selectedSpecification) || Number(batteryCapacityKwh) > 0);
 
   return (
     <div className="vehicle-confirmation">
       <img src={candidate.imageUrl} alt={`${candidate.label} ${candidate.modelName}`} />
       <div><span>선택한 공식 차량</span><strong>{candidate.modelName} · {candidate.modelYear}</strong><small>{candidate.projectCode} · {candidate.fuel}</small></div>
       <label>별명<input value={nickname} onChange={(event) => setNickname(event.target.value)} /></label>
-      <label>동력원<select value={powertrain} onChange={(event) => setPowertrain(event.target.value as Powertrain)}>{Object.entries(POWERTRAIN_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label>동력원 *<select value={powertrain} onChange={(event) => { setPowertrain(event.target.value as Powertrain); setPowertrainDetail(""); setTrim(""); setBatteryCapacityKwh(""); }}>{Object.entries(POWERTRAIN_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      {matchingSpecifications.length > 0 ? (
+        <>
+          <label>세부 구동 사양 *<select value={powertrainDetail} onChange={(event) => { setPowertrainDetail(event.target.value); setTrim(""); }}>
+            <option value="">선택해 주세요</option>
+            {matchingSpecifications.map((item) => <option key={item.id} value={item.powertrainDetail}>{item.powertrainDetail}</option>)}
+          </select></label>
+          <label>트림 *<select value={trim} disabled={!powertrainDetail} onChange={(event) => setTrim(event.target.value)}>
+            <option value="">선택해 주세요</option>
+            {catalogTrims.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select></label>
+        </>
+      ) : (
+        <>
+          <label>세부 구동 사양 *<input value={powertrainDetail} onChange={(event) => setPowertrainDetail(event.target.value)} placeholder="예: 2.0 디젤 xDrive" /></label>
+          <label>트림 *<input value={trim} onChange={(event) => setTrim(event.target.value)} placeholder="예: M Sport" /></label>
+        </>
+      )}
+      {powertrain === "electric" ? selectedSpecification ? (
+        <p>공식 배터리 제원 <strong>{selectedSpecification.batteryCapacityKwh} kWh</strong>가 자동 적용됩니다.</p>
+      ) : (
+        <label>배터리 용량 *<input type="number" min="0.1" step="0.1" value={batteryCapacityKwh} onChange={(event) => setBatteryCapacityKwh(event.target.value)} placeholder="확인한 값 (kWh)" /></label>
+      ) : null}
       {powertrain === "gasoline" || powertrain === "diesel" || powertrain === "hybrid" ? (
         <label>지정 연료<select value={fuelGrade} onChange={(event) => setFuelGrade(event.target.value as FuelGrade)}>{Object.entries(FUEL_GRADE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       ) : null}
       {candidate.fuel === "ICE" ? <p>공식 설명서 데이터는 내연기관 종류를 세분화하지 않을 수 있습니다. 실제 차량의 동력원과 지정 연료를 확인해 주세요.</p> : null}
       {isFull ? <p>현재 프로필이 3대이고 최대 3대까지 등록할 수 있습니다. 계속하면 기존 프로필 중 교체할 차량을 선택합니다.</p> : null}
       <div className="chat-confirm-actions">
-        <button type="button" className="primary-button" disabled={disabled} onClick={() => onConfirm({ candidate, nickname, powertrain, fuelGrade: powertrain === "electric" || powertrain === "hydrogen" ? undefined : fuelGrade })}>{isFull ? "기존 차량 교체 후 등록" : "프로필 등록"}</button>
+        <button type="button" className="primary-button" disabled={disabled || !hasRequiredDetails} onClick={() => onConfirm({
+          candidate,
+          nickname,
+          powertrain,
+          trim: trim.trim(),
+          powertrainDetail: powertrainDetail.trim(),
+          batteryCapacityKwh: selectedSpecification?.batteryCapacityKwh ?? (powertrain === "electric" ? Number(batteryCapacityKwh) : undefined),
+          specificationSourceUrl: selectedSpecification?.sourceUrl,
+          specificationVerifiedAt: selectedSpecification?.verifiedAt,
+          fuelGrade: powertrain === "electric" || powertrain === "hydrogen" ? undefined : fuelGrade,
+        })}>{isFull ? "기존 차량 교체 후 등록" : "프로필 등록"}</button>
         <button type="button" className="secondary-button" disabled={disabled} onClick={onCancel}>취소</button>
       </div>
     </div>
