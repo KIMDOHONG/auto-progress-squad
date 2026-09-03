@@ -1,6 +1,8 @@
-import { parseVehicleRegistration, searchOfficialVehicles } from "./officialVehicle";
+import { clearOfficialVehicleCacheForTests, parseVehicleRegistration, searchOfficialVehicles } from "./officialVehicle";
 
 describe("official vehicle input parsing", () => {
+  beforeEach(() => clearOfficialVehicleCacheForTests());
+
   it("extracts a year and model when the manufacturer is omitted", () => {
     expect(parseVehicleRegistration("2020 K5 등록해줘")).toEqual({
       manufacturer: undefined,

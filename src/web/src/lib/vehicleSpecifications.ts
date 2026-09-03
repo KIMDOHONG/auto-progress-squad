@@ -9,17 +9,62 @@ export interface VehicleSpecification {
   modelYear: number;
   powertrain: Powertrain;
   powertrainDetail: string;
+  powertrainDetailAliases?: string[];
   trims: string[];
+  trimAliases?: string[];
   batteryCapacityKwh?: number;
   sourceUrl: string;
   verifiedAt: string;
 }
 
 const KIA_EV6_SOURCE = "https://www.kia.com/kr/vehicles/ev6/price";
+const KIA_EV6_2026_SOURCE = "https://kwp1.kia.com/content/dam/kwp/kr/ko/vehicles/pdf/catalog/catalog_ev6.pdf";
 const HYUNDAI_KONA_EV_SOURCE = "https://www.hyundai.com/contents/repn-car/catalog/kona-electric-2025-price.pdf";
 const GENESIS_EGV70_SOURCE = "https://www.genesis.com/kr/ko/models/electrified-gv70";
 
 export const VEHICLE_SPECIFICATIONS: VehicleSpecification[] = [
+  {
+    id: "kia-ev6-2026-standard-2wd",
+    manufacturer: "기아",
+    manufacturerAliases: ["기아", "KIA"],
+    model: "EV6",
+    modelAliases: ["EV6", "더 뉴 EV6"],
+    modelYear: 2026,
+    powertrain: "electric",
+    powertrainDetail: "스탠다드 2WD",
+    trims: ["라이트", "에어", "어스"],
+    batteryCapacityKwh: 63,
+    sourceUrl: KIA_EV6_2026_SOURCE,
+    verifiedAt: "2026-09-03",
+  },
+  {
+    id: "kia-ev6-2026-long-range-2wd",
+    manufacturer: "기아",
+    manufacturerAliases: ["기아", "KIA"],
+    model: "EV6",
+    modelAliases: ["EV6", "더 뉴 EV6"],
+    modelYear: 2026,
+    powertrain: "electric",
+    powertrainDetail: "롱레인지 2WD",
+    trims: ["라이트", "에어", "어스", "GT-Line"],
+    batteryCapacityKwh: 84,
+    sourceUrl: KIA_EV6_2026_SOURCE,
+    verifiedAt: "2026-09-03",
+  },
+  {
+    id: "kia-ev6-2026-long-range-4wd",
+    manufacturer: "기아",
+    manufacturerAliases: ["기아", "KIA"],
+    model: "EV6",
+    modelAliases: ["EV6", "더 뉴 EV6"],
+    modelYear: 2026,
+    powertrain: "electric",
+    powertrainDetail: "롱레인지 4WD",
+    trims: ["라이트", "에어", "어스", "GT-Line"],
+    batteryCapacityKwh: 84,
+    sourceUrl: KIA_EV6_2026_SOURCE,
+    verifiedAt: "2026-09-03",
+  },
   {
     id: "kia-ev6-2027-standard-2wd",
     manufacturer: "기아",
@@ -98,8 +143,10 @@ export const VEHICLE_SPECIFICATIONS: VehicleSpecification[] = [
     modelAliases: ["ELECTRIFIED GV70", "GV70 전동화", "일렉트리파이드 GV70"],
     modelYear: 2027,
     powertrain: "electric",
-    powertrainDetail: "듀얼모터 AWD",
-    trims: ["기본형"],
+    powertrainDetail: "AWD (듀얼 모터)",
+    powertrainDetailAliases: ["듀얼모터 AWD"],
+    trims: ["기본 모델"],
+    trimAliases: ["기본형"],
     batteryCapacityKwh: 84,
     sourceUrl: GENESIS_EGV70_SOURCE,
     verifiedAt: "2026-09-03",
@@ -139,7 +186,9 @@ export function resolveVehicleSpecification(
   const normalizedDetail = normalize(powertrainDetail);
   const normalizedTrim = normalize(trim);
   return findVehicleSpecifications(manufacturer, model, modelYear, powertrain).find((item) => (
-    normalize(item.powertrainDetail) === normalizedDetail
-    && item.trims.some((candidate) => normalize(candidate) === normalizedTrim)
+    [item.powertrainDetail, ...(item.powertrainDetailAliases ?? [])]
+      .some((candidate) => normalize(candidate) === normalizedDetail)
+    && [...item.trims, ...(item.trimAliases ?? [])]
+      .some((candidate) => normalize(candidate) === normalizedTrim)
   ));
 }

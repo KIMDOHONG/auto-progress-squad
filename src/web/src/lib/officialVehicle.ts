@@ -85,6 +85,12 @@ const MODEL_ALIASES: Record<string, string> = {
   아이오닉오N: "아이오닉 5 N",
 };
 
+export function clearOfficialVehicleCacheForTests(): void {
+  if (!import.meta.env.MODE.includes("test")) return;
+  catalogCache.clear();
+  detailCache.clear();
+}
+
 function normalize(value: string): string {
   return value.toLocaleUpperCase("ko-KR").replace(/[^0-9A-Z가-힣]/g, "");
 }

@@ -1,12 +1,14 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode } from "react";
 import App from "./App";
+import { clearOfficialVehicleCacheForTests } from "./lib/officialVehicle";
 
 describe("vehicle-aware planner", () => {
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     window.localStorage.clear();
+    clearOfficialVehicleCacheForTests();
     vi.unstubAllEnvs();
   });
 
@@ -249,6 +251,54 @@ describe("vehicle-aware planner", () => {
     fireEvent.click(screen.getByRole("button", { name: "매뉴얼·리콜" }));
     expect(await screen.findByText(/DL3 · 2020/)).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "기아 K5 · 2020 공식 차량 이미지" })).toHaveAttribute("src", "https://ownersmanual.kia.com/api/v2/kia/files/2309/DLSD20SWP.png");
+  });
+
+  it("automatically applies the 2026 EV6 battery after the official chat selection", async () => {
+    window.localStorage.setItem("auto-squad.vehicle-profiles.v4", JSON.stringify({
+      version: 4,
+      vehicles: [{ id: "only-car", nickname: "기존 차량", manufacturer: "BMW", model: "M3", modelYear: 2021, powertrain: "gasoline", fuelGrade: "premium" }],
+      activeVehicleId: "only-car",
+    }));
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("ownersmanual.kia.com") && url.includes("/models")) {
+        return { ok: true, status: 200, json: async () => ({ CARS: [{ langModelName: "EV6" }] }) } as Response;
+      }
+      if (url.includes("ownersmanual.kia.com") && url.includes("/model?")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            years: ["2026"],
+            yearModels: {
+              "2026": [
+                { modelName: "EV6", projCode: "CV1", year: "2026", fuel: "EV", mainImgUrl: "/api/v2/kia/files/ev6.png" },
+              ],
+            },
+          }),
+        } as Response;
+      }
+      if (url.includes("/models")) {
+        return { ok: true, status: 200, json: async () => ({ CARS: [] }) } as Response;
+      }
+      throw new Error(`unexpected request: ${url}`);
+    }) as typeof fetch;
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("AI 코파일럿에게 메시지 보내기"), { target: { value: "2026 EV6 프로필 추가" } });
+    fireEvent.click(screen.getByRole("button", { name: "메시지 전송" }));
+    fireEvent.click(await screen.findByRole("button", { name: "2026 EV6 CV1 선택" }));
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "세부 구동 사양 *" }), { target: { value: "롱레인지 4WD" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "트림 *" }), { target: { value: "GT-Line" } });
+
+    expect(screen.getByText("84 kWh").closest("p")).toHaveTextContent("공식 배터리 제원 84 kWh가 자동 적용됩니다.");
+    expect(screen.queryByRole("spinbutton", { name: "배터리 용량 *" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "프로필 등록" }));
+    expect(await screen.findByRole("option", { name: "기아 EV6 · 2026" })).toBeInTheDocument();
+
+    fireEvent.click((await screen.findAllByRole("button", { name: /EV 충전 플래너/ }))[0]);
+    expect(screen.getByLabelText(/사용 가능 배터리 용량/)).toHaveValue(84);
   });
 
   it("asks which existing profile to replace when all three slots are occupied", async () => {

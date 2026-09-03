@@ -46,8 +46,9 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
     draft.powertrainDetail,
     draft.trim,
   );
-  const catalogTrims = matchingSpecifications
-    .find((item) => item.powertrainDetail === draft.powertrainDetail)?.trims ?? [];
+  const catalogTrims = selectedSpecification?.trims
+    ?? matchingSpecifications.find((item) => item.powertrainDetail === draft.powertrainDetail)?.trims
+    ?? [];
 
   function updateDraft<Key extends keyof VehicleDraft>(key: Key, value: VehicleDraft[Key]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -195,10 +196,16 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
               <>
                 <label>세부 구동 사양 *<select value={draft.powertrainDetail} onChange={(event) => setDraft((current) => ({ ...current, powertrainDetail: event.target.value, trim: "" }))}>
                   <option value="">선택해 주세요</option>
+                  {selectedSpecification && selectedSpecification.powertrainDetail !== draft.powertrainDetail
+                    ? <option value={draft.powertrainDetail}>{selectedSpecification.powertrainDetail}</option>
+                    : null}
                   {matchingSpecifications.map((item) => <option key={item.id} value={item.powertrainDetail}>{item.powertrainDetail}</option>)}
                 </select></label>
                 <label>트림 *<select value={draft.trim} disabled={!draft.powertrainDetail} onChange={(event) => updateDraft("trim", event.target.value)}>
                   <option value="">선택해 주세요</option>
+                  {selectedSpecification && !catalogTrims.includes(draft.trim)
+                    ? <option value={draft.trim}>{selectedSpecification.trims[0]}</option>
+                    : null}
                   {catalogTrims.map((trim) => <option key={trim} value={trim}>{trim}</option>)}
                 </select></label>
               </>
