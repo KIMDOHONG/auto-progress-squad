@@ -41,6 +41,7 @@ class VehicleProfile(BaseModel):
     powertrain_detail: str | None = None
     fuel_grade: FuelGrade | None = None
     battery_capacity_kwh: float | None = None
+    fuel_tank_capacity_liters: float | None = None
     specification_source_url: str | None = None
     specification_verified_at: str | None = None
     manual_site_id: ManualSiteId | None = None
@@ -65,6 +66,7 @@ class VehiclePayload(BaseModel):
     powertrain_detail: str | None = Field(default=None, min_length=1, max_length=160)
     fuel_grade: FuelGrade | None = None
     battery_capacity_kwh: float | None = Field(default=None, gt=0, le=500)
+    fuel_tank_capacity_liters: float | None = Field(default=None, gt=0, le=300)
     specification_source_url: str | None = Field(default=None, max_length=1000)
     specification_verified_at: str | None = Field(default=None, max_length=80)
     manual_site_id: ManualSiteId | None = None
@@ -89,6 +91,8 @@ class VehiclePayload(BaseModel):
             raise ValueError("수소전기차에는 휘발유·경유 등급을 설정할 수 없습니다.")
         if self.powertrain != "electric" and self.battery_capacity_kwh is not None:
             raise ValueError("수소전기차·내연기관·하이브리드 차량에는 배터리 용량을 설정할 수 없습니다.")
+        if self.powertrain not in {"gasoline", "diesel", "hybrid"} and self.fuel_tank_capacity_liters is not None:
+            raise ValueError("전기차·수소전기차에는 연료탱크 용량을 설정할 수 없습니다.")
         manual_values = (
             self.manual_model_name,
             self.manual_project_code,

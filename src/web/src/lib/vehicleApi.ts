@@ -11,6 +11,7 @@ interface ApiVehicleProfile {
   powertrain_detail: string | null;
   fuel_grade: VehicleProfile["fuelGrade"] | null;
   battery_capacity_kwh: number | null;
+  fuel_tank_capacity_liters: number | null;
   specification_source_url: string | null;
   specification_verified_at: string | null;
   manual_site_id: OfficialManualSiteId | null;
@@ -126,6 +127,9 @@ function fromApi(vehicle: ApiVehicleProfile): VehicleProfile {
     ...(vehicle.battery_capacity_kwh
       ? { batteryCapacityKwh: vehicle.battery_capacity_kwh }
       : {}),
+    ...(vehicle.fuel_tank_capacity_liters
+      ? { fuelTankCapacityLiters: vehicle.fuel_tank_capacity_liters }
+      : {}),
     ...(vehicle.specification_source_url ? { specificationSourceUrl: vehicle.specification_source_url } : {}),
     ...(vehicle.specification_verified_at ? { specificationVerifiedAt: vehicle.specification_verified_at } : {}),
     ...(manual ? { manual } : {}),
@@ -143,6 +147,7 @@ function toApi(vehicle: VehicleProfile) {
     powertrain_detail: vehicle.powertrainDetail ?? null,
     fuel_grade: vehicle.fuelGrade ?? null,
     battery_capacity_kwh: vehicle.batteryCapacityKwh ?? null,
+    fuel_tank_capacity_liters: vehicle.fuelTankCapacityLiters ?? null,
     specification_source_url: vehicle.specificationSourceUrl ?? null,
     specification_verified_at: vehicle.specificationVerifiedAt ?? null,
     manual_site_id: vehicle.manual?.siteId ?? null,

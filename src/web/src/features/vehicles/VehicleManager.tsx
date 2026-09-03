@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { FUEL_GRADE_LABELS, POWERTRAIN_LABELS, getVehicleTitle } from "../../lib/vehicle";
-import { findVehicleSpecifications, resolveVehicleSpecification } from "../../lib/vehicleSpecifications";
+import { findVehicleSpecifications, resolveVehicleEnergySpecification, resolveVehicleSpecification } from "../../lib/vehicleSpecifications";
 import type { VehicleDraft, VehicleProfile } from "../../types";
 
 const EMPTY_DRAFT: VehicleDraft = {
@@ -13,6 +13,7 @@ const EMPTY_DRAFT: VehicleDraft = {
   powertrainDetail: "",
   fuelGrade: "regular",
   batteryCapacityKwh: "",
+  fuelTankCapacityLiters: "",
 };
 
 interface VehicleManagerProps {
@@ -46,9 +47,14 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
     draft.powertrainDetail,
     draft.trim,
   );
-  const catalogTrims = selectedSpecification?.trims
-    ?? matchingSpecifications.find((item) => item.powertrainDetail === draft.powertrainDetail)?.trims
-    ?? [];
+  const selectedEnergySpecification = resolveVehicleEnergySpecification(
+    draft.manufacturer,
+    draft.model,
+    Number(draft.modelYear),
+    draft.powertrain,
+    draft.powertrainDetail,
+  );
+  const catalogTrims = selectedEnergySpecification?.trims ?? [];
 
   function updateDraft<Key extends keyof VehicleDraft>(key: Key, value: VehicleDraft[Key]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -91,7 +97,18 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
               specificationVerifiedAt: selectedSpecification.verifiedAt,
             } : {}),
           }
-        : isHydrogen ? {} : { fuelGrade: draft.fuelGrade }),
+        : isHydrogen ? {} : {
+            fuelGrade: draft.fuelGrade,
+            ...(selectedSpecification?.fuelTankCapacityLiters
+              ? {
+                  fuelTankCapacityLiters: selectedSpecification.fuelTankCapacityLiters,
+                  specificationSourceUrl: selectedSpecification.sourceUrl,
+                  specificationVerifiedAt: selectedSpecification.verifiedAt,
+                }
+              : Number(draft.fuelTankCapacityLiters) > 0
+                ? { fuelTankCapacityLiters: Number(draft.fuelTankCapacityLiters) }
+                : {}),
+          }),
     };
 
     setIsSaving(true);
@@ -149,6 +166,7 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
       powertrainDetail: vehicle.powertrainDetail ?? "",
       fuelGrade: vehicle.fuelGrade ?? "regular",
       batteryCapacityKwh: vehicle.batteryCapacityKwh ? String(vehicle.batteryCapacityKwh) : "",
+      fuelTankCapacityLiters: vehicle.fuelTankCapacityLiters ? String(vehicle.fuelTankCapacityLiters) : "",
     });
   }
 
@@ -188,10 +206,10 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
           <h3>{editingVehicleId ? "차량 정보 수정" : "새 차량 등록"}</h3>
           <div className="form-grid three-columns">
             <label>별명<input value={draft.nickname} onChange={(event) => updateDraft("nickname", event.target.value)} placeholder="예: 주말 차량" /></label>
-            <label>제조사 *<input value={draft.manufacturer} onChange={(event) => setDraft((current) => ({ ...current, manufacturer: event.target.value, powertrainDetail: "", trim: "", batteryCapacityKwh: "" }))} placeholder="예: BMW" /></label>
-            <label>모델 *<input value={draft.model} onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value, powertrainDetail: "", trim: "", batteryCapacityKwh: "" }))} placeholder="예: 330i" /></label>
-            <label>연식 *<input type="number" min="1990" max="2030" value={draft.modelYear} onChange={(event) => setDraft((current) => ({ ...current, modelYear: event.target.value, powertrainDetail: "", trim: "", batteryCapacityKwh: "" }))} /></label>
-            <label>동력원 *<select value={draft.powertrain} onChange={(event) => setDraft((current) => ({ ...current, powertrain: event.target.value as VehicleDraft["powertrain"], powertrainDetail: "", trim: "", batteryCapacityKwh: "" }))}>{Object.entries(POWERTRAIN_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label>제조사 *<input value={draft.manufacturer} onChange={(event) => setDraft((current) => ({ ...current, manufacturer: event.target.value, powertrainDetail: "", trim: "", batteryCapacityKwh: "", fuelTankCapacityLiters: "" }))} placeholder="예: BMW" /></label>
+            <label>모델 *<input value={draft.model} onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value, powertrainDetail: "", trim: "", batteryCapacityKwh: "", fuelTankCapacityLiters: "" }))} placeholder="예: 330i" /></label>
+            <label>연식 *<input type="number" min="1990" max="2030" value={draft.modelYear} onChange={(event) => setDraft((current) => ({ ...current, modelYear: event.target.value, powertrainDetail: "", trim: "", batteryCapacityKwh: "", fuelTankCapacityLiters: "" }))} /></label>
+            <label>동력원 *<select value={draft.powertrain} onChange={(event) => setDraft((current) => ({ ...current, powertrain: event.target.value as VehicleDraft["powertrain"], powertrainDetail: "", trim: "", batteryCapacityKwh: "", fuelTankCapacityLiters: "" }))}>{Object.entries(POWERTRAIN_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             {matchingSpecifications.length > 0 ? (
               <>
                 <label>세부 구동 사양 *<select value={draft.powertrainDetail} onChange={(event) => setDraft((current) => ({ ...current, powertrainDetail: event.target.value, trim: "" }))}>
@@ -201,13 +219,14 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
                     : null}
                   {matchingSpecifications.map((item) => <option key={item.id} value={item.powertrainDetail}>{item.powertrainDetail}</option>)}
                 </select></label>
-                <label>트림 *<select value={draft.trim} disabled={!draft.powertrainDetail} onChange={(event) => updateDraft("trim", event.target.value)}>
-                  <option value="">선택해 주세요</option>
-                  {selectedSpecification && !catalogTrims.includes(draft.trim)
-                    ? <option value={draft.trim}>{selectedSpecification.trims[0]}</option>
-                    : null}
-                  {catalogTrims.map((trim) => <option key={trim} value={trim}>{trim}</option>)}
-                </select></label>
+                {catalogTrims.length > 0 ? (
+                  <label>트림 *<select value={draft.trim} disabled={!draft.powertrainDetail} onChange={(event) => updateDraft("trim", event.target.value)}>
+                    <option value="">선택해 주세요</option>
+                    {catalogTrims.map((trim) => <option key={trim} value={trim}>{trim}</option>)}
+                  </select></label>
+                ) : (
+                  <label>트림 *<input value={draft.trim} disabled={!draft.powertrainDetail} onChange={(event) => updateDraft("trim", event.target.value)} placeholder="예: GT-Line" /><span>배터리 용량과 무관한 실제 트림명을 입력해 주세요.</span></label>
+                )}
               </>
             ) : (
               <>
@@ -216,15 +235,22 @@ export function VehicleManager({ vehicles, activeVehicleId, onClose, onSelect, o
               </>
             )}
             {isElectric ? (
-              selectedSpecification ? (
-                <label>배터리 용량<input aria-label="배터리 용량" value={`${selectedSpecification.batteryCapacityKwh} kWh`} readOnly /><a href={selectedSpecification.sourceUrl} target="_blank" rel="noreferrer">공식 제원 · {selectedSpecification.verifiedAt} 확인</a></label>
+              selectedEnergySpecification ? (
+                <label>배터리 용량<input aria-label="배터리 용량" value={`${selectedEnergySpecification.batteryCapacityKwh} kWh`} readOnly /><a href={selectedEnergySpecification.sourceUrl} target="_blank" rel="noreferrer">공식 제원 · {selectedEnergySpecification.verifiedAt} 확인</a></label>
               ) : (
                 <label>배터리 용량 *<input type="number" min="0.1" step="0.1" value={draft.batteryCapacityKwh} onChange={(event) => updateDraft("batteryCapacityKwh", event.target.value)} placeholder="확인한 값 (kWh)" /><span>공식 자동 매핑이 없는 차량은 사용자 확인값으로 저장됩니다.</span></label>
               )
             ) : isHydrogen ? (
               <label>충전 연료<input value="수소" readOnly /></label>
             ) : (
-              <label>지정 연료<select value={draft.fuelGrade} onChange={(event) => updateDraft("fuelGrade", event.target.value as VehicleDraft["fuelGrade"])}>{Object.entries(FUEL_GRADE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              <>
+                <label>지정 연료<select value={draft.fuelGrade} onChange={(event) => updateDraft("fuelGrade", event.target.value as VehicleDraft["fuelGrade"])}>{Object.entries(FUEL_GRADE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                {selectedEnergySpecification?.fuelTankCapacityLiters ? (
+                  <label>연료탱크 용량<input aria-label="연료탱크 용량" value={`${selectedEnergySpecification.fuelTankCapacityLiters} L`} readOnly /><a href={selectedEnergySpecification.sourceUrl} target="_blank" rel="noreferrer">공식 제원 · {selectedEnergySpecification.verifiedAt} 확인</a></label>
+                ) : (
+                  <label>연료탱크 용량<input type="number" min="0.1" max="300" step="0.1" value={draft.fuelTankCapacityLiters} onChange={(event) => updateDraft("fuelTankCapacityLiters", event.target.value)} placeholder="확인한 값 (L)" /><span>주유량 계산용입니다. 공식 자동 매핑 전에는 비워두거나 제원표의 값을 입력할 수 있습니다.</span></label>
+                )}
+              </>
             )}
           </div>
           {error ? <p className="form-error" role="alert">{error}</p> : null}

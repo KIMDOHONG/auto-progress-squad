@@ -100,7 +100,7 @@ describe("vehicle-aware planner", () => {
     fireEvent.change(dialog.getByRole("combobox", { name: "트림 *" }), { target: { value: "GT-Line" } });
 
     expect(dialog.getByRole("textbox", { name: "배터리 용량" })).toHaveValue("84 kWh");
-    expect(dialog.getByRole("link", { name: /공식 제원/ })).toHaveAttribute("href", "https://www.kia.com/kr/vehicles/ev6/price");
+    expect(dialog.getByRole("link", { name: /공식 제원/ })).toHaveAttribute("href", "https://www.kia.com/kr/vehicles/ev6/specification");
     fireEvent.click(dialog.getByRole("button", { name: "변경 저장" }));
 
     expect(await screen.findByRole("option", { name: "기아 더 뉴 EV6 · 2027" })).toBeInTheDocument();

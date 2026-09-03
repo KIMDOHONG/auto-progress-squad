@@ -85,6 +85,7 @@ export interface VehicleProfile {
   powertrainDetail?: string;
   fuelGrade?: FuelGrade;
   batteryCapacityKwh?: number;
+  fuelTankCapacityLiters?: number;
   specificationSourceUrl?: string;
   specificationVerifiedAt?: string;
   manual?: OfficialManualMetadata;
@@ -102,4 +103,5 @@ export interface VehicleDraft {
   powertrainDetail: string;
   fuelGrade: FuelGrade;
   batteryCapacityKwh: string;
+  fuelTankCapacityLiters: string;
 }

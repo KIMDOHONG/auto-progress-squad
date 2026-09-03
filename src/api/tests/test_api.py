@@ -281,6 +281,35 @@ def test_vehicle_specification_source_requires_a_paired_verification_date(
     assert response.json()["error"]["code"] == "validation_error"
 
 
+def test_fuel_tank_capacity_is_persisted_for_combustion_profiles(
+    client: TestClient,
+) -> None:
+    payload = {
+        "id": "diesel-profile",
+        "nickname": "장거리 차량",
+        "manufacturer": "BMW",
+        "model": "320d",
+        "model_year": 2021,
+        "powertrain": "diesel",
+        "powertrain_detail": "2.0 디젤",
+        "trim": "M Sport",
+        "fuel_grade": "diesel",
+        "fuel_tank_capacity_liters": 40,
+    }
+
+    created = client.post("/api/v1/vehicles", json=payload)
+
+    assert created.status_code == 201
+    assert created.json()["fuel_tank_capacity_liters"] == 40
+    assert client.get("/api/v1/vehicles").json()["items"][0]["fuel_tank_capacity_liters"] == 40
+
+    invalid_electric = vehicle_payload("invalid-electric-tank")
+    invalid_electric["fuel_tank_capacity_liters"] = 50
+    invalid = client.post("/api/v1/vehicles", json=invalid_electric)
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "validation_error"
+
+
 def test_vehicle_limit_and_last_vehicle_guards(client: TestClient) -> None:
     for index in range(3):
         response = client.post(
@@ -505,6 +534,7 @@ def test_schema_v2_migration_preserves_profiles_and_adds_hydrogen(tmp_path: Path
         assert "powertrain_detail" in columns
         assert "specification_source_url" in columns
         assert "specification_verified_at" in columns
+        assert "fuel_tank_capacity_liters" in columns
         ingestion_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(manual_ingestion_jobs)")
         }
