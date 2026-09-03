@@ -154,6 +154,10 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .planner-symbol.hydrogen { background: #dff7f5; color: #087f78; }
 .planner-symbol.fuel { background: #ffead5; color: #c45a08; }
 .planner-form { border-bottom: 1px solid var(--line); padding-bottom: 24px; }
+.trip-mode-selector { display: flex; align-items: center; gap: 10px; margin: 12px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.trip-mode-selector legend { padding: 0 5px; color: var(--muted); font-size: 10px; font-weight: 800; }
+.trip-mode-selector label { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 800; }
+.trip-mode-selector span { margin-left: auto; color: var(--muted); font-size: 10px; }
 .planner-mode-note { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 16px; border-radius: 11px; background: #eef4ff; padding: 11px 13px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .planner-mode-note strong { color: var(--blue); white-space: nowrap; }
 .form-grid { display: grid; gap: 14px; }
@@ -365,6 +369,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   .manual-vehicle-visual { width: 190px; }
 }
 @media (max-width: 680px) {
+  .trip-mode-selector { align-items: flex-start; flex-wrap: wrap; }
+  .trip-mode-selector span { flex-basis: 100%; margin-left: 0; }
   .topbar { align-items: flex-start; }
   .brand small { display: none; }
   .vehicle-selector { width: 100%; }

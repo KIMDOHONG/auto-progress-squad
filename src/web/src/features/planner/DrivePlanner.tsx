@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { BoltIcon, FuelIcon, RouteIcon } from "../../components/Icons";
 import { calculateEvPlan, calculateRangePlan, type EvPlannerResult, type RangePlannerResult } from "../../lib/planner";
 import {
+  combineRoundTripRoutes,
   getPlannerMapConfig,
   lookupApiRoute,
   resolveApiLocation,
@@ -18,6 +19,7 @@ import { RouteMap } from "./RouteMap";
 interface DrivePlannerProps { vehicle: VehicleProfile; apiBaseUrl?: string; }
 
 type PlannerResult = EvPlannerResult | RangePlannerResult;
+type TripMode = "one-way" | "round-trip";
 
 const ROUTE_OPTION_LABELS: Record<RouteOption, string> = {
   trafast: "실시간 빠른 길",
@@ -106,6 +108,7 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
   const [resolvedDeparture, setResolvedDeparture] = useState<RouteLocationResult | null>(null);
   const [resolvedDestination, setResolvedDestination] = useState<RouteLocationResult | null>(null);
   const [routeDistance, setRouteDistance] = useState("100");
+  const [tripMode, setTripMode] = useState<TripMode>("one-way");
   const [batteryCapacity, setBatteryCapacity] = useState(vehicle.batteryCapacityKwh?.toString() ?? "");
   const [battery, setBattery] = useState("42");
   const [efficiency, setEfficiency] = useState("5.1");
@@ -159,6 +162,7 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
 
   function clearRouteLookup() {
     setRouteLookup(null);
+    setResult(null);
     setSelectedRouteOption("trafast");
     setRouteError("");
     setMapBrowserClientId(null);
@@ -246,8 +250,14 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
     setRouteLoading(true);
     setRouteError("");
     try {
+      const routePromise = tripMode === "round-trip"
+        ? Promise.all([
+            lookupApiRoute(apiBaseUrl, resolvedDeparture, resolvedDestination),
+            lookupApiRoute(apiBaseUrl, resolvedDestination, resolvedDeparture),
+          ]).then(([outbound, inbound]) => combineRoundTripRoutes(outbound, inbound))
+        : lookupApiRoute(apiBaseUrl, resolvedDeparture, resolvedDestination);
       const [lookup, mapConfig] = await Promise.all([
-        lookupApiRoute(apiBaseUrl, resolvedDeparture, resolvedDestination),
+        routePromise,
         getPlannerMapConfig(apiBaseUrl).catch(() => ({ enabled: false, browserClientId: null })),
       ]);
       const distance = String(lookup.distanceKm);
@@ -284,6 +294,12 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
 
       <form className="planner-form" onSubmit={handleSubmit} noValidate>
         <p className="planner-mode-note"><strong>{apiBaseUrl ? "정확한 주소 기반 경로 조회" : "수동 거리 모드"}</strong>{apiBaseUrl ? " 도로명과 건물번호를 확인한 뒤 실제 경로를 조회합니다. 실패해도 직접 입력 거리 계산은 유지됩니다." : " 출발지와 목적지는 경로 메모이며, 현재 계산에는 직접 입력한 거리만 사용합니다."}</p>
+        <fieldset className="trip-mode-selector">
+          <legend>여정 방식</legend>
+          <label><input type="radio" name="trip-mode" value="one-way" checked={tripMode === "one-way"} onChange={() => { setTripMode("one-way"); clearRouteLookup(); }} />편도</label>
+          <label><input type="radio" name="trip-mode" value="round-trip" checked={tripMode === "round-trip"} onChange={() => { setTripMode("round-trip"); clearRouteLookup(); }} />왕복</label>
+          <span>{tripMode === "round-trip" ? "실제 경로는 가는 길과 오는 길을 각각 조회해 합산합니다. 직접 입력 시에는 왕복 총거리를 입력합니다." : "출발지에서 목적지까지 한 방향을 계산합니다."}</span>
+        </fieldset>
         {apiBaseUrl ? (
           <div className="address-grid">
             <div className="address-field-group">
@@ -309,7 +325,7 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
           </div>
         )}
         <div className="form-grid route-inputs planner-measurements">
-          <label htmlFor="planner-distance">경로 거리<input id="planner-distance" type="number" min="0.1" step="0.1" value={routeDistance} onChange={(event) => { setRouteDistance(event.target.value); setRouteLookup(null); }} /><span className="input-suffix" aria-hidden="true">km</span></label>
+          <label htmlFor="planner-distance">{tripMode === "round-trip" ? "왕복 총 경로 거리" : "경로 거리"}<input id="planner-distance" type="number" min="0.1" step="0.1" value={routeDistance} onChange={(event) => { setRouteDistance(event.target.value); setRouteLookup(null); }} /><span className="input-suffix" aria-hidden="true">km</span></label>
           {electric ? (
             <>
               <label htmlFor="planner-capacity">사용 가능 배터리 용량<input id="planner-capacity" type="number" min="0.1" step="0.1" value={batteryCapacity} onChange={(event) => setBatteryCapacity(event.target.value)} /><span className="input-suffix" aria-hidden="true">kWh</span></label>
@@ -324,7 +340,7 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
             </>
           )}
         </div>
-        {routeLookup && selectedRoute ? <div className="route-lookup-status" role="status"><strong>{routeLookup.sourceName} · {ROUTE_OPTION_LABELS[selectedRoute.routeOption]}</strong><span>{selectedRoute.distanceKm} km · 약 {selectedRoute.durationMinutes}분 · 통행료 {selectedRoute.tollFare.toLocaleString()}원</span><span>{routeLookup.departure.address} → {routeLookup.destination.address}</span></div> : null}
+        {routeLookup && selectedRoute ? <div className="route-lookup-status" role="status"><strong>{routeLookup.sourceName} · {tripMode === "round-trip" ? "왕복 · " : ""}{ROUTE_OPTION_LABELS[selectedRoute.routeOption]}</strong><span>{selectedRoute.distanceKm} km · 약 {selectedRoute.durationMinutes}분 · 통행료 {selectedRoute.tollFare.toLocaleString()}원</span><span>{routeLookup.departure.address} → {routeLookup.destination.address}{tripMode === "round-trip" ? " → 출발지" : ""}</span></div> : null}
         {routeAlternatives.length > 1 ? (
           <div className="route-alternatives" aria-label="조회된 실제 경로 선택">
             {routeAlternatives.map((route) => (
@@ -348,13 +364,13 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
         {routeLookup && selectedRoute ? (
           <div className="route-canvas route-canvas-live">
             <RouteMap routes={routeAlternatives} selectedOption={selectedRoute.routeOption} browserClientId={mapBrowserClientId} />
-            <div className="map-route-summary"><strong>{ROUTE_OPTION_LABELS[selectedRoute.routeOption]}</strong><span>{routeLookup.departure.address} → {routeLookup.destination.address}</span><span>{selectedRoute.distanceKm}km · 약 {selectedRoute.durationMinutes}분</span></div>
+            <div className="map-route-summary"><strong>{tripMode === "round-trip" ? "왕복 · " : ""}{ROUTE_OPTION_LABELS[selectedRoute.routeOption]}</strong><span>{routeLookup.departure.address} → {routeLookup.destination.address}{tripMode === "round-trip" ? " → 출발지" : ""}</span><span>{selectedRoute.distanceKm}km · 약 {selectedRoute.durationMinutes}분</span></div>
           </div>
         ) : (
           <div className="route-canvas" aria-label="수동 거리 경로 요약">
             <div className="route-line" />
             <span className="map-point start">출발</span><span className="map-point middle">경로</span><span className="map-point end">도착</span>
-            <div className="map-empty-state"><RouteIcon /><strong>직접 입력 거리</strong><span>{departure || "출발지 미입력"} → {destination || "목적지 미입력"} · {routeDistance || 0} km</span></div>
+            <div className="map-empty-state"><RouteIcon /><strong>{tripMode === "round-trip" ? "직접 입력 왕복 거리" : "직접 입력 거리"}</strong><span>{departure || "출발지 미입력"} → {destination || "목적지 미입력"}{tripMode === "round-trip" ? " → 출발지" : ""} · {routeDistance || 0} km</span></div>
           </div>
         )}
 

@@ -93,6 +93,37 @@ describe("DrivePlanner route lookup", () => {
     expect(result.getByText(/경로 거리는 NAVER Maps 조회 결과를 사용했습니다/)).toBeInTheDocument();
   });
 
+  it("looks up both directions and sums a round trip", async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce(response(locationPayload("부산역", "부산 동구 중앙대로 206", 129.04, 35.11)))
+      .mockResolvedValueOnce(response(locationPayload("부산인력개발원", "부산 남구 용당동 546-2", 129.09, 35.12)))
+      .mockResolvedValueOnce(response(routePayload))
+      .mockResolvedValueOnce(response({
+        ...routePayload,
+        departure: routePayload.destination,
+        destination: routePayload.departure,
+      }))
+      .mockResolvedValueOnce(response({ enabled: false, browser_client_id: null }));
+    render(<DrivePlanner vehicle={vehicle} apiBaseUrl="http://127.0.0.1:8000" />);
+    fireEvent.click(screen.getByRole("radio", { name: "왕복" }));
+    await confirmBothAddresses();
+
+    fireEvent.click(screen.getByRole("button", { name: "실제 경로 조회 후 계산" }));
+
+    expect(await screen.findByText("NAVER Maps · 왕복 · 실시간 빠른 길")).toBeInTheDocument();
+    expect(screen.getByText("25.4 km · 약 42분 · 통행료 2,400원")).toBeInTheDocument();
+    expect(screen.getByLabelText(/왕복 총 경로 거리/)).toHaveValue(25.4);
+    const routeCalls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([url]) => String(url).endsWith("/api/v1/planner/route"));
+    expect(routeCalls).toHaveLength(2);
+    expect(JSON.parse(String(routeCalls[1][1]?.body))).toEqual(expect.objectContaining({
+      departure: "부산 남구 용당동 546-2",
+      destination: "부산 동구 중앙대로 206",
+      departure_location: expect.objectContaining({ longitude: 129.09, latitude: 35.12 }),
+      destination_location: expect.objectContaining({ longitude: 129.04, latitude: 35.11 }),
+    }));
+  });
+
   it("keeps the direct distance calculation available when route lookup is unavailable", async () => {
     globalThis.fetch = vi.fn()
       .mockResolvedValueOnce(response(locationPayload("부산역", "부산 동구 중앙대로 206", 129.04, 35.11)))

@@ -66,6 +66,62 @@ export interface PlannerMapConfig {
   browserClientId: string | null;
 }
 
+function combinePath(
+  outbound: RouteCoordinateResult[],
+  inbound: RouteCoordinateResult[],
+): RouteCoordinateResult[] {
+  const firstInbound = inbound[0];
+  const lastOutbound = outbound[outbound.length - 1];
+  const inboundStart = firstInbound && lastOutbound
+    && firstInbound.longitude === lastOutbound.longitude
+    && firstInbound.latitude === lastOutbound.latitude
+    ? 1
+    : 0;
+  return [...outbound, ...inbound.slice(inboundStart)];
+}
+
+function combineAlternative(
+  outbound: RouteAlternativeResult,
+  inbound: RouteAlternativeResult,
+): RouteAlternativeResult {
+  return {
+    distanceKm: Math.round((outbound.distanceKm + inbound.distanceKm) * 10) / 10,
+    durationMinutes: outbound.durationMinutes + inbound.durationMinutes,
+    routeOption: outbound.routeOption,
+    tollFare: outbound.tollFare + inbound.tollFare,
+    fuelPrice: outbound.fuelPrice + inbound.fuelPrice,
+    path: combinePath(outbound.path, inbound.path),
+  };
+}
+
+export function combineRoundTripRoutes(
+  outbound: RouteLookupResult,
+  inbound: RouteLookupResult,
+): RouteLookupResult {
+  const inboundByOption = new Map(inbound.alternatives.map((route) => [route.routeOption, route]));
+  const alternatives = outbound.alternatives.flatMap((route) => {
+    const returnRoute = inboundByOption.get(route.routeOption);
+    return returnRoute ? [combineAlternative(route, returnRoute)] : [];
+  });
+  const outboundPrimary = outbound.alternatives.find((route) => route.routeOption === outbound.routeOption) ?? outbound;
+  const inboundPrimary = inbound.alternatives.find((route) => route.routeOption === outboundPrimary.routeOption)
+    ?? inbound.alternatives.find((route) => route.routeOption === inbound.routeOption)
+    ?? inbound;
+  const primary = alternatives.find((route) => route.routeOption === outboundPrimary.routeOption)
+    ?? combineAlternative(outboundPrimary, inboundPrimary);
+  const combinedAlternatives = alternatives.length > 0 ? alternatives : [primary];
+
+  return {
+    ...primary,
+    departure: outbound.departure,
+    destination: outbound.destination,
+    alternatives: combinedAlternatives,
+    sourceName: outbound.sourceName,
+    sourceUrl: outbound.sourceUrl,
+    retrievedAt: inbound.retrievedAt > outbound.retrievedAt ? inbound.retrievedAt : outbound.retrievedAt,
+  };
+}
+
 export class RouteApiError extends Error {
   constructor(public readonly code: string, message: string) {
     super(message);
