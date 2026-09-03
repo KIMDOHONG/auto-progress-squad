@@ -71,6 +71,42 @@ describe("route API", () => {
     expect(await getPlannerMapConfig("http://127.0.0.1:8000")).toEqual({ enabled: true, browserClientId: "browser-id" });
   });
 
+  it("sends confirmed coordinates so route lookup does not geocode the GPS address again", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        departure: { query: "현재 위치", address: "확인된 출발지", longitude: 129.04, latitude: 35.11 },
+        destination: { query: "청학남로 48", address: "확인된 목적지", longitude: 129.09, latitude: 35.12 },
+        distance_km: 5,
+        duration_minutes: 10,
+        route_option: "trafast",
+        toll_fare: 0,
+        fuel_price: 0,
+        path: [{ longitude: 129.04, latitude: 35.11 }, { longitude: 129.09, latitude: 35.12 }],
+        alternatives: [],
+        source_name: "NAVER Maps",
+        source_url: "https://www.ncloud.com/product/applicationService/maps",
+        retrieved_at: "2026-09-03T03:00:00+00:00",
+      }),
+    } as Response);
+    const departure = { query: "현재 위치", address: "확인된 출발지", longitude: 129.04, latitude: 35.11 };
+    const destination = { query: "청학남로 48", address: "확인된 목적지", longitude: 129.09, latitude: 35.12 };
+
+    await lookupApiRoute("http://127.0.0.1:8000", departure, destination);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/v1/planner/route",
+      expect.objectContaining({
+        body: JSON.stringify({
+          departure: "확인된 출발지",
+          destination: "확인된 목적지",
+          departure_location: departure,
+          destination_location: destination,
+        }),
+      }),
+    );
+  });
+
   it("preserves the backend failure reason for the manual fallback UI", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,

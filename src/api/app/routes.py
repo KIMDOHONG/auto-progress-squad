@@ -43,7 +43,7 @@ from .recall_provider import (
     validate_provider,
     validate_recall_records,
 )
-from .route_provider import RouteLocationNotFoundError, RouteProviderError
+from .route_provider import RouteLocation, RouteLocationNotFoundError, RouteProviderError
 from .schemas import (
     ApiErrorResponse,
     HealthResponse,
@@ -241,9 +241,17 @@ def lookup_planner_route(
             message="실제 경로 조회 API가 설정되지 않았습니다. 직접 입력 거리로 계산해 주세요.",
         )
     try:
-        route = provider.lookup_route(
-            payload.departure.strip(), payload.destination.strip()
-        )
+        if payload.departure_location and payload.destination_location:
+            departure: str | RouteLocation = RouteLocation(
+                **payload.departure_location.model_dump()
+            )
+            destination: str | RouteLocation = RouteLocation(
+                **payload.destination_location.model_dump()
+            )
+        else:
+            departure = payload.departure.strip()
+            destination = payload.destination.strip()
+        route = provider.lookup_route(departure, destination)
     except RouteLocationNotFoundError as error:
         field_label = "출발지" if error.field == "departure" else "목적지"
         raise ApiError(

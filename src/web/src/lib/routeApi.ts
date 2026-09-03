@@ -160,15 +160,22 @@ export async function getPlannerMapConfig(baseUrl: string): Promise<PlannerMapCo
 
 export async function lookupApiRoute(
   baseUrl: string,
-  departure: string,
-  destination: string,
+  departure: string | RouteLocationResult,
+  destination: string | RouteLocationResult,
 ): Promise<RouteLookupResult> {
+  const departureLocation = typeof departure === "string" ? undefined : departure;
+  const destinationLocation = typeof destination === "string" ? undefined : destination;
   const payload = await plannerFetch<ApiRouteLookupResult>(
     `${baseUrl}/api/v1/planner/route`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ departure, destination }),
+      body: JSON.stringify({
+        departure: departureLocation?.address ?? departure,
+        destination: destinationLocation?.address ?? destination,
+        departure_location: departureLocation,
+        destination_location: destinationLocation,
+      }),
     },
     "경로 조회 서버에 연결할 수 없습니다. 직접 입력 거리로 계산해 주세요.",
     "실제 경로를 조회하지 못했습니다. 직접 입력 거리로 계산해 주세요.",

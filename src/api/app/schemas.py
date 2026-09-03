@@ -259,9 +259,18 @@ class RecallListResponse(BaseModel):
     retrieved_at: str
 
 
+class RouteLookupLocation(BaseModel):
+    query: str = Field(min_length=1, max_length=200)
+    address: str = Field(min_length=2, max_length=200)
+    longitude: float = Field(ge=-180, le=180)
+    latitude: float = Field(ge=-90, le=90)
+
+
 class RouteLookupRequest(BaseModel):
     departure: str = Field(min_length=2, max_length=200)
     destination: str = Field(min_length=2, max_length=200)
+    departure_location: RouteLookupLocation | None = None
+    destination_location: RouteLookupLocation | None = None
 
 
 class RouteLocationResolveRequest(BaseModel):

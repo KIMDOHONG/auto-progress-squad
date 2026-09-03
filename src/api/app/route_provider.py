@@ -67,7 +67,9 @@ class RouteProvider(Protocol):
 
     def reverse_location(self, longitude: float, latitude: float) -> RouteLocation: ...
 
-    def lookup_route(self, departure: str, destination: str) -> RouteLookup: ...
+    def lookup_route(
+        self, departure: str | RouteLocation, destination: str | RouteLocation
+    ) -> RouteLookup: ...
 
 
 def _default_json_transport(
@@ -259,9 +261,19 @@ class NaverMapsRouteProvider:
             path=tuple(path),
         )
 
-    def lookup_route(self, departure: str, destination: str) -> RouteLookup:
-        resolved_departure = self.resolve_location(departure, "departure")
-        resolved_destination = self.resolve_location(destination, "destination")
+    def lookup_route(
+        self, departure: str | RouteLocation, destination: str | RouteLocation
+    ) -> RouteLookup:
+        resolved_departure = (
+            departure
+            if isinstance(departure, RouteLocation)
+            else self.resolve_location(departure, "departure")
+        )
+        resolved_destination = (
+            destination
+            if isinstance(destination, RouteLocation)
+            else self.resolve_location(destination, "destination")
+        )
         payload = self._request(
             self._directions_endpoint,
             {

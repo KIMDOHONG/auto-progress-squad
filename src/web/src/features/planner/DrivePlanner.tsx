@@ -247,7 +247,7 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
     setRouteError("");
     try {
       const [lookup, mapConfig] = await Promise.all([
-        lookupApiRoute(apiBaseUrl, resolvedDeparture.address, resolvedDestination.address),
+        lookupApiRoute(apiBaseUrl, resolvedDeparture, resolvedDestination),
         getPlannerMapConfig(apiBaseUrl).catch(() => ({ enabled: false, browserClientId: null })),
       ]);
       const distance = String(lookup.distanceKm);

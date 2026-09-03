@@ -81,6 +81,33 @@ def test_naver_provider_does_not_guess_an_unknown_address() -> None:
         raise AssertionError("unknown departure must fail")
 
 
+def test_naver_provider_uses_confirmed_coordinates_without_geocoding_again() -> None:
+    calls: list[str] = []
+
+    def transport(url: str, _headers: dict[str, str], _timeout: float):
+        calls.append(url)
+        assert "map-geocode" not in url
+        return {"route": {
+            "trafast": [{
+                "summary": {"distance": 5000, "duration": 600_000},
+                "path": [[129.04, 35.11], [129.09, 35.12]],
+            }],
+        }}
+
+    provider = NaverMapsRouteProvider(
+        "client-id", "client-secret", transport=transport
+    )
+    departure = RouteLocation("현재 위치", "확인된 출발지", 129.04, 35.11)
+    destination = RouteLocation("청학남로 48", "확인된 목적지", 129.09, 35.12)
+
+    result = provider.lookup_route(departure, destination)
+
+    assert result.departure is departure
+    assert result.destination is destination
+    assert len(calls) == 1
+    assert "map-direction" in calls[0]
+
+
 def test_naver_provider_reverse_geocodes_gps_coordinates() -> None:
     def transport(url: str, _headers: dict[str, str], _timeout: float):
         query = parse_qs(urlparse(url).query)
@@ -129,7 +156,9 @@ class FakeRouteProvider:
     def reverse_location(self, longitude: float, latitude: float) -> RouteLocation:
         return RouteLocation("현재 위치", "부산 영도구 태종로 423", longitude, latitude)
 
-    def lookup_route(self, departure: str, destination: str) -> RouteLookup:
+    def lookup_route(
+        self, departure: str | RouteLocation, destination: str | RouteLocation
+    ) -> RouteLookup:
         fast = RouteAlternative(
             route_option="trafast",
             distance_meters=12_654,
@@ -146,9 +175,15 @@ class FakeRouteProvider:
             fuel_price=1_900,
             path=(RouteCoordinate(129.0403, 35.1151), RouteCoordinate(129.0964, 35.1266)),
         )
+        resolved_departure = departure if isinstance(departure, RouteLocation) else RouteLocation(
+            departure, "부산 동구 중앙대로 206", 129.0403, 35.1151
+        )
+        resolved_destination = destination if isinstance(destination, RouteLocation) else RouteLocation(
+            destination, "부산 남구 용당동 546-2", 129.0964, 35.1266
+        )
         return RouteLookup(
-            departure=RouteLocation(departure, "부산 동구 중앙대로 206", 129.0403, 35.1151),
-            destination=RouteLocation(destination, "부산 남구 용당동 546-2", 129.0964, 35.1266),
+            departure=resolved_departure,
+            destination=resolved_destination,
             distance_meters=12_654,
             duration_milliseconds=1_234_567,
             route_option="trafast",
@@ -200,6 +235,35 @@ def test_route_endpoint_returns_distance_duration_and_resolved_addresses(tmp_pat
     assert payload["departure"]["query"] == "부산역"
     assert payload["destination"]["address"] == "부산 남구 용당동 546-2"
     assert payload["retrieved_at"]
+
+
+def test_route_endpoint_uses_coordinates_from_confirmed_locations(tmp_path: Path) -> None:
+    with make_client(tmp_path, FakeRouteProvider()) as client:
+        response = client.post(
+            "/api/v1/planner/route",
+            json={
+                "departure": "확인된 출발지",
+                "destination": "확인된 목적지",
+                "departure_location": {
+                    "query": "현재 위치",
+                    "address": "확인된 출발지",
+                    "longitude": 129.04,
+                    "latitude": 35.11,
+                },
+                "destination_location": {
+                    "query": "청학남로 48",
+                    "address": "확인된 목적지",
+                    "longitude": 129.09,
+                    "latitude": 35.12,
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["departure"]["query"] == "현재 위치"
+    assert payload["departure"]["longitude"] == 129.04
+    assert payload["destination"]["query"] == "청학남로 48"
 
 
 def test_location_resolve_endpoint_requires_an_exact_provider_result(tmp_path: Path) -> None:
