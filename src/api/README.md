@@ -1,6 +1,6 @@
 # Backend API
 
-FastAPI와 SQLite 기반 백엔드입니다. 차량 프로필, 승인된 로컬 매뉴얼의 추출·청크 저장·출처 검색, 리콜 API 계약, 선택형 실제 경로 조회와 경로 주변 충전·주유소 공통 계약을 제공합니다. 생성형 매뉴얼 답변은 검증 환경에서만 선택적으로 연결합니다. 리콜과 충전·주유소는 공급자 계약까지만 구현했으며 승인된 실제 HTTP 공급자는 아직 연결하지 않습니다.
+FastAPI와 SQLite 기반 백엔드입니다. 차량 프로필, 승인된 로컬 매뉴얼의 추출·청크 저장·출처 검색, 리콜 API 계약, 선택형 실제 경로 조회와 경로 주변 충전·주유소 공통 계약을 제공합니다. 생성형 매뉴얼 답변은 검증 환경에서만 선택적으로 연결합니다. 한국환경공단 전기차 충전소 HTTP 공급자를 선택적으로 연결하며, 수소·주유소와 리콜의 실제 공급자는 아직 연결하지 않습니다.
 
 ## 실행
 
@@ -36,6 +36,12 @@ uv run pytest
 | `APS_NAVER_MAPS_BROWSER_CLIENT_ID` | 없음 | Dynamic Map 브라우저 공개 Client ID; 콘솔에서 허용 Web 서비스 URL 제한 필요 |
 | `APS_NAVER_MAPS_TIMEOUT_SECONDS` | `5` | Geocoding·Reverse Geocoding·Directions 5 요청 제한 시간(초) |
 | `APS_STATION_CATALOG_PATH` | 없음 | 출처·조회시각이 포함된 로컬 전기·수소·주유소 정규 JSON 스냅샷 경로 |
+| `APS_EV_CHARGER_SERVICE_KEY` | 없음 | 공공데이터포털에서 발급받은 한국환경공단 전기차 충전소 API 서비스키 |
+| `APS_EV_CHARGER_TIMEOUT_SECONDS` | `10` | 전기차 충전소 API 요청 제한 시간(초) |
+| `APS_EV_CHARGER_CACHE_TTL_SECONDS` | `1800` | 전국 또는 지정 시도 충전소 응답의 메모리 캐시 시간(초) |
+| `APS_EV_CHARGER_PAGE_SIZE` | `9999` | 공식 API 한 번당 요청 건수(10~9999) |
+| `APS_EV_CHARGER_MAX_PAGES` | `100` | 비정상 페이지 반복을 차단하는 최대 페이지 수 |
+| `APS_EV_CHARGER_REGION_CODES` | 없음 | 선택형 쉼표 구분 시도 코드(예: 부산 `26`, 경남 `48`); 없으면 전국 |
 
 ## 현재 API
 
@@ -66,7 +72,7 @@ uv run pytest
 
 - 잠금 파일 기준 `pypdf 6.16.2`(BSD-3-Clause)는 서버에서 승인된 PDF의 텍스트를 추출할 때만 사용합니다. 문서 다운로드, 이용 허가 판단, 답변 생성은 수행하지 않습니다.
 - NAVER Maps 서버 Client ID와 Client Secret은 FastAPI 프로세스 환경변수에서만 읽고 프런트엔드 응답·로그·저장소에 노출하지 않습니다. Dynamic Map용 별도 Client ID만 지도 설정 응답으로 브라우저에 전달하며, 이는 공개 식별자이므로 NAVER Cloud 콘솔에서 허용 Web 서비스 URL을 제한해야 합니다. Geocoding·Reverse Geocoding·Directions 5가 미설정되거나 실패하면 직접 입력 거리 계산으로 명시적으로 복귀합니다. 실제 계정 키를 사용한 라이브 E2E와 과금 확인은 아직 완료하지 않았습니다.
-- 충전·주유소 공통 계약은 `APS_STATION_CATALOG_PATH`의 정규 JSON 스냅샷만 읽습니다. 경로와 후보 좌표의 근접도는 실제 도로 우회거리나 우회시간이 아니며, 실제 공급자 수집 어댑터와 화면 후보 목록은 아직 미연동입니다. 데이터 형식과 실패 경계는 [ADR-0010](../../docs/decisions/0010-normalize-local-energy-station-snapshots.md)을 따릅니다.
+- 충전·주유소 공통 계약은 검토용 `APS_STATION_CATALOG_PATH` 정규 JSON 스냅샷을 우선하고, 스냅샷이 없고 `APS_EV_CHARGER_SERVICE_KEY`가 있으면 [한국환경공단 전기자동차 충전소 정보](https://www.data.go.kr/data/15013115/standard.do)를 사용합니다. 같은 충전소의 충전기 행을 하나로 묶고 기본 30분 캐시한 뒤 기존 경로 반경 비교에 전달합니다. 경로와 후보 좌표의 근접도는 실제 도로 우회거리나 우회시간이 아니며 대기시간도 포함하지 않습니다. 수소·주유소는 실제 공급자 미설정 상태입니다. 데이터 형식과 실패 경계는 [ADR-0010](../../docs/decisions/0010-normalize-local-energy-station-snapshots.md)을 따릅니다.
 - PDF/TXT 파일과 공식 원문 URL은 서버 관리자가 manifest로 제공해야 합니다. 작업자는 허용된 공식 도메인과 `APS_MANUAL_SOURCE_DIR` 내부 경로만 처리합니다.
 - 쉐보레·KGM 매핑은 같은 디렉터리의 `adapter-manifest.json`에 별도로 둡니다. 항목에는 `manufacturer_id`, `model`, `model_year`, `generation`, `manual_title`, `official_url`, `source_checked_at`와 `chapters`의 `title`·`url`이 필요합니다. 제조사 API 응답이나 PDF를 저장소에 커밋하지 말고, 이용 조건과 정확한 차량 대응을 검토한 링크만 운영 서버에 배치합니다.
 - 같은 차명·연식에 승인된 세대가 둘 이상이면 조회·연결 API는 `409 manual_generation_required`와 `generation`, `manual_title`, `source_checked_at` 후보만 반환합니다. 클라이언트가 사용자의 세대 선택을 받은 뒤 `generation`을 다시 보내야 하며, 오류 응답에는 공식 URL이나 PDF URL을 포함하지 않습니다.

@@ -36,6 +36,12 @@ class Settings:
     naver_maps_browser_client_id: str | None = None
     naver_maps_timeout_seconds: float = 5.0
     station_catalog_path: Path | None = None
+    ev_charger_service_key: str | None = None
+    ev_charger_timeout_seconds: float = 10.0
+    ev_charger_cache_ttl_seconds: float = 1_800.0
+    ev_charger_page_size: int = 9_999
+    ev_charger_max_pages: int = 100
+    ev_charger_region_codes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.manual_search_mode not in {"keyword", "embedding"}:
@@ -58,6 +64,19 @@ class Settings:
             )
         if self.naver_maps_timeout_seconds <= 0:
             raise ValueError("APS_NAVER_MAPS_TIMEOUT_SECONDS must be greater than zero")
+        if self.ev_charger_timeout_seconds <= 0:
+            raise ValueError("APS_EV_CHARGER_TIMEOUT_SECONDS must be greater than zero")
+        if self.ev_charger_cache_ttl_seconds < 0:
+            raise ValueError("APS_EV_CHARGER_CACHE_TTL_SECONDS must not be negative")
+        if not 10 <= self.ev_charger_page_size <= 9_999:
+            raise ValueError("APS_EV_CHARGER_PAGE_SIZE must be between 10 and 9999")
+        if self.ev_charger_max_pages < 1:
+            raise ValueError("APS_EV_CHARGER_MAX_PAGES must be at least 1")
+        if any(
+            len(code) != 2 or not code.isdigit()
+            for code in self.ev_charger_region_codes
+        ):
+            raise ValueError("APS_EV_CHARGER_REGION_CODES must contain two-digit codes")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -81,6 +100,7 @@ class Settings:
         ).strip().lower()
         configured_model_path = os.getenv("APS_MANUAL_GENERATION_MODEL_PATH")
         configured_station_catalog_path = os.getenv("APS_STATION_CATALOG_PATH")
+        configured_ev_regions = os.getenv("APS_EV_CHARGER_REGION_CODES", "")
         return cls(
             database_path=database_path,
             cors_origins=cors_origins,
@@ -128,5 +148,27 @@ class Settings:
                 Path(configured_station_catalog_path)
                 if configured_station_catalog_path
                 else None
+            ),
+            ev_charger_service_key=(
+                os.getenv("APS_EV_CHARGER_SERVICE_KEY", "").strip() or None
+            ),
+            ev_charger_timeout_seconds=float(
+                os.getenv("APS_EV_CHARGER_TIMEOUT_SECONDS", "10")
+            ),
+            ev_charger_cache_ttl_seconds=float(
+                os.getenv("APS_EV_CHARGER_CACHE_TTL_SECONDS", "1800")
+            ),
+            ev_charger_page_size=int(
+                os.getenv("APS_EV_CHARGER_PAGE_SIZE", "9999")
+            ),
+            ev_charger_max_pages=int(
+                os.getenv("APS_EV_CHARGER_MAX_PAGES", "100")
+            ),
+            ev_charger_region_codes=tuple(
+                dict.fromkeys(
+                    code.strip()
+                    for code in configured_ev_regions.split(",")
+                    if code.strip()
+                )
             ),
         )

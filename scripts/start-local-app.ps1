@@ -71,12 +71,15 @@ Assert-PortAvailable -Port $WebPort -ServiceName "Vite"
 
 $originalClientId = [Environment]::GetEnvironmentVariable("APS_NAVER_MAPS_CLIENT_ID", "Process")
 $originalClientSecret = [Environment]::GetEnvironmentVariable("APS_NAVER_MAPS_CLIENT_SECRET", "Process")
+$originalEvChargerServiceKey = [Environment]::GetEnvironmentVariable("APS_EV_CHARGER_SERVICE_KEY", "Process")
 $originalApiBaseUrl = [Environment]::GetEnvironmentVariable("VITE_API_BASE_URL", "Process")
 $originalCorsOrigins = [Environment]::GetEnvironmentVariable("APS_CORS_ORIGINS", "Process")
 $clientIdValue = $originalClientId
 $clientSecretValue = $originalClientSecret
+$evChargerServiceKeyValue = $originalEvChargerServiceKey
 $clientIdPointer = [IntPtr]::Zero
 $clientSecretPointer = [IntPtr]::Zero
+$evChargerServiceKeyPointer = [IntPtr]::Zero
 $apiProcess = $null
 $webProcess = $null
 
@@ -94,8 +97,21 @@ try {
         throw "NAVER Client ID와 Client Secret은 둘 다 설정하거나 둘 다 비워야 합니다."
     }
 
+    if ([string]::IsNullOrWhiteSpace($evChargerServiceKeyValue)) {
+        Write-Host "전기차 충전소 공공데이터 서비스키도 파일에 저장하지 않고 자식 백엔드에만 전달합니다."
+        $evChargerServiceKeySecure = Read-Host "공공데이터포털 서비스키를 붙여 넣거나 아직 없으면 Enter" -AsSecureString
+        $evChargerServiceKeyPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($evChargerServiceKeySecure)
+        $evChargerServiceKeyValue = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($evChargerServiceKeyPointer)
+    }
+
     $env:APS_NAVER_MAPS_CLIENT_ID = $clientIdValue
     $env:APS_NAVER_MAPS_CLIENT_SECRET = $clientSecretValue
+    if ([string]::IsNullOrWhiteSpace($evChargerServiceKeyValue)) {
+        Remove-Item Env:APS_EV_CHARGER_SERVICE_KEY -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:APS_EV_CHARGER_SERVICE_KEY = $evChargerServiceKeyValue
+    }
     $env:VITE_API_BASE_URL = "http://127.0.0.1:$ApiPort"
     $configuredCorsOrigins = @(
         if ($originalCorsOrigins) { $originalCorsOrigins.Split(",", [StringSplitOptions]::RemoveEmptyEntries) }
@@ -123,8 +139,10 @@ try {
     # Plain-text copies are no longer needed after both child processes inherit their environment.
     $clientIdValue = $null
     $clientSecretValue = $null
+    $evChargerServiceKeyValue = $null
     if ($originalClientId) { $env:APS_NAVER_MAPS_CLIENT_ID = $originalClientId } else { Remove-Item Env:APS_NAVER_MAPS_CLIENT_ID -ErrorAction SilentlyContinue }
     if ($originalClientSecret) { $env:APS_NAVER_MAPS_CLIENT_SECRET = $originalClientSecret } else { Remove-Item Env:APS_NAVER_MAPS_CLIENT_SECRET -ErrorAction SilentlyContinue }
+    if ($originalEvChargerServiceKey) { $env:APS_EV_CHARGER_SERVICE_KEY = $originalEvChargerServiceKey } else { Remove-Item Env:APS_EV_CHARGER_SERVICE_KEY -ErrorAction SilentlyContinue }
     if ($originalCorsOrigins) { $env:APS_CORS_ORIGINS = $originalCorsOrigins } else { Remove-Item Env:APS_CORS_ORIGINS -ErrorAction SilentlyContinue }
 
     $webUrl = "http://127.0.0.1:$WebPort/auto-progress-squad/"
@@ -153,8 +171,10 @@ finally {
     if ($apiProcess -and -not $apiProcess.HasExited) { Stop-Process -Id $apiProcess.Id -Force -ErrorAction SilentlyContinue }
     if ($clientIdPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($clientIdPointer) }
     if ($clientSecretPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($clientSecretPointer) }
+    if ($evChargerServiceKeyPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($evChargerServiceKeyPointer) }
     if ($originalClientId) { $env:APS_NAVER_MAPS_CLIENT_ID = $originalClientId } else { Remove-Item Env:APS_NAVER_MAPS_CLIENT_ID -ErrorAction SilentlyContinue }
     if ($originalClientSecret) { $env:APS_NAVER_MAPS_CLIENT_SECRET = $originalClientSecret } else { Remove-Item Env:APS_NAVER_MAPS_CLIENT_SECRET -ErrorAction SilentlyContinue }
+    if ($originalEvChargerServiceKey) { $env:APS_EV_CHARGER_SERVICE_KEY = $originalEvChargerServiceKey } else { Remove-Item Env:APS_EV_CHARGER_SERVICE_KEY -ErrorAction SilentlyContinue }
     if ($originalApiBaseUrl) { $env:VITE_API_BASE_URL = $originalApiBaseUrl } else { Remove-Item Env:VITE_API_BASE_URL -ErrorAction SilentlyContinue }
     if ($originalCorsOrigins) { $env:APS_CORS_ORIGINS = $originalCorsOrigins } else { Remove-Item Env:APS_CORS_ORIGINS -ErrorAction SilentlyContinue }
 }

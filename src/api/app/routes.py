@@ -46,6 +46,7 @@ from .recall_provider import (
 from .route_provider import RouteLocation, RouteLocationNotFoundError, RouteProviderError
 from .station_provider import (
     StationProviderError,
+    StationProviderNotConfiguredError,
     rank_route_stations,
     validate_station_source_result,
 )
@@ -337,6 +338,11 @@ def search_planner_stations(
             limit=payload.limit,
             fuel_grade=payload.fuel_grade,
         )
+    except StationProviderNotConfiguredError:
+        raise ServiceNotConfiguredError(
+            code="station_source_not_configured",
+            message="선택한 동력원의 충전·주유소 데이터 공급자가 설정되지 않았습니다.",
+        ) from None
     except StationProviderError:
         raise ApiError(
             status.HTTP_503_SERVICE_UNAVAILABLE,

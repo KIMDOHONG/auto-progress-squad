@@ -3,15 +3,19 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
 from app.station_provider import (
     JsonStationProvider,
+    KecoEvChargerProvider,
     StationCandidate,
     StationProviderError,
+    StationProviderNotConfiguredError,
     StationSourceResult,
     rank_route_stations,
 )
@@ -259,3 +263,160 @@ def test_json_station_provider_loads_source_attributed_local_snapshot(
     assert provider.source_name == "공식 데이터 내보내기"
     assert result.retrieved_at == "2026-09-04T01:00:00+00:00"
     assert result.stations[0].pressure_bar == 700
+
+
+def official_payload(
+    items: list[dict[str, object]], total_count: int
+) -> dict[str, object]:
+    return {
+        "response": {
+            "header": {"resultCode": "00", "resultMsg": "NORMAL SERVICE."},
+            "body": {"items": {"item": items}, "totalCount": total_count},
+        }
+    }
+
+
+def test_keco_provider_paginates_normalizes_and_caches_chargers() -> None:
+    requested_queries: list[dict[str, list[str]]] = []
+
+    def transport(url: str, timeout_seconds: float) -> dict[str, object]:
+        assert timeout_seconds == 3.5
+        query = parse_qs(urlparse(url).query)
+        requested_queries.append(query)
+        assert query["serviceKey"] == ["abc+123/="]
+        assert query["zcode"] == ["26"]
+        assert query["numOfRows"] == ["10"]
+        if query["pageNo"] == ["1"]:
+            return official_payload(
+                [
+                    {
+                        "statId": "ME001",
+                        "chgerId": "01",
+                        "statNm": "테스트 충전소",
+                        "addr": "부산광역시 동구 중앙대로 200",
+                        "addrDetail": "지하 1층",
+                        "lat": "35.1149",
+                        "lng": "129.0414",
+                        "stat": "3",
+                        "statUpdDt": "20260904090000",
+                        "output": "50",
+                        "delYn": "N",
+                    },
+                    {
+                        "statId": "ME001",
+                        "chgerId": "02",
+                        "statNm": "테스트 충전소",
+                        "addr": "부산광역시 동구 중앙대로 200",
+                        "addrDetail": "지하 1층",
+                        "lat": "35.1149",
+                        "lng": "129.0414",
+                        "stat": "2",
+                        "statUpdDt": "20260904100000",
+                        "output": "200",
+                        "delYn": "N",
+                    },
+                    *[
+                        {"statId": f"deleted-{index}", "delYn": "Y"}
+                        for index in range(8)
+                    ],
+                ],
+                11,
+            )
+        return official_payload(
+            [
+                {
+                    "statId": "ME002",
+                    "chgerId": "01",
+                    "statNm": "두 번째 충전소",
+                    "addr": "부산광역시 부산진구 테스트로 2",
+                    "lat": "35.16",
+                    "lng": "129.06",
+                    "stat": "5",
+                    "statUpdDt": "invalid",
+                    "output": "100",
+                }
+            ],
+            11,
+        )
+
+    provider = KecoEvChargerProvider(
+        "abc%2B123%2F%3D",
+        timeout_seconds=3.5,
+        cache_ttl_seconds=1_800,
+        page_size=10,
+        region_codes=("26",),
+        transport=transport,
+    )
+
+    first = provider.list_stations("electric")
+    second = provider.list_stations("electric")
+
+    assert second is first
+    assert len(requested_queries) == 2
+    assert [query["pageNo"] for query in requested_queries] == [["1"], ["2"]]
+    assert [station.station_id for station in first.stations] == ["ME001", "ME002"]
+    assert first.stations[0].address == "부산광역시 동구 중앙대로 200 지하 1층"
+    assert first.stations[0].status == "available"
+    assert first.stations[0].status_observed_at == "2026-09-04T10:00:00+09:00"
+    assert first.stations[0].power_kw == 200
+    assert first.stations[1].status == "unavailable"
+    assert first.stations[1].status_observed_at is None
+
+
+def test_keco_provider_rejects_unsupported_energy_kind() -> None:
+    provider = KecoEvChargerProvider(
+        "test-key", transport=lambda url, timeout: official_payload([], 0)
+    )
+
+    with pytest.raises(StationProviderNotConfiguredError):
+        provider.list_stations("hydrogen")
+
+
+def test_keco_provider_reports_official_api_failure() -> None:
+    provider = KecoEvChargerProvider(
+        "test-key",
+        transport=lambda url, timeout: {
+            "response": {
+                "header": {
+                    "resultCode": "30",
+                    "resultMsg": "SERVICE KEY IS NOT REGISTERED",
+                },
+                "body": {},
+            }
+        },
+    )
+
+    with pytest.raises(StationProviderError):
+        provider.list_stations("electric")
+
+
+def test_keco_provider_is_created_from_settings_and_other_fuels_stay_unconfigured(
+    tmp_path: Path,
+) -> None:
+    configured = Settings(
+        database_path=tmp_path / "stations.db",
+        cors_origins=("https://kimdohong.github.io",),
+        manual_source_dir=tmp_path / "manuals",
+        ev_charger_service_key="test-key",
+        ev_charger_region_codes=("26",),
+    )
+    with TestClient(create_app(configured)) as client:
+        assert isinstance(client.app.state.station_provider, KecoEvChargerProvider)
+        response = client.post(
+            "/api/v1/planner/stations",
+            json={
+                "energy_kind": "hydrogen",
+                "route_path": [
+                    {"longitude": longitude, "latitude": latitude}
+                    for longitude, latitude in ROUTE_PATH
+                ],
+            },
+        )
+
+    assert response.status_code == 503
+    assert response.json()["error"] == {
+        "code": "station_source_not_configured",
+        "message": "선택한 동력원의 충전·주유소 데이터 공급자가 설정되지 않았습니다.",
+        "retryable": False,
+        "details": None,
+    }

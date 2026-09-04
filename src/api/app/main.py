@@ -13,7 +13,7 @@ from .manual_embedding_search import EmbeddingManualSearcher
 from .manual_grounded_answer import OpenVINOGroundedAnswerGenerator
 from .recall_provider import RecallProvider
 from .route_provider import NaverMapsRouteProvider, RouteProvider
-from .station_provider import JsonStationProvider, StationProvider
+from .station_provider import JsonStationProvider, KecoEvChargerProvider, StationProvider
 from .routes import router
 
 
@@ -44,7 +44,18 @@ def create_app(
         app.state.station_provider = station_provider or (
             JsonStationProvider(resolved_settings.station_catalog_path)
             if resolved_settings.station_catalog_path
-            else None
+            else (
+                KecoEvChargerProvider(
+                    resolved_settings.ev_charger_service_key,
+                    timeout_seconds=resolved_settings.ev_charger_timeout_seconds,
+                    cache_ttl_seconds=resolved_settings.ev_charger_cache_ttl_seconds,
+                    page_size=resolved_settings.ev_charger_page_size,
+                    max_pages=resolved_settings.ev_charger_max_pages,
+                    region_codes=resolved_settings.ev_charger_region_codes,
+                )
+                if resolved_settings.ev_charger_service_key
+                else None
+            )
         )
         app.state.manual_embedding_search = (
             EmbeddingManualSearcher(

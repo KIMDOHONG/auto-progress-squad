@@ -2,20 +2,29 @@ from __future__ import annotations
 
 import json
 import math
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Literal, Protocol
-from urllib.parse import urlparse
+from typing import Any, Callable, Literal, Protocol
+from urllib.error import HTTPError, URLError
+from urllib.parse import unquote, urlencode, urlparse
+from urllib.request import Request, urlopen
 
 
 EnergyKind = Literal["electric", "hydrogen", "fuel"]
 StationStatus = Literal["available", "busy", "unavailable", "unknown"]
 FuelGradeMatch = Literal["confirmed", "unknown", "not-applicable"]
+StationJsonTransport = Callable[[str, float], Mapping[str, Any]]
 
 
 class StationProviderError(Exception):
     """Raised when station data cannot be returned or safely interpreted."""
+
+
+class StationProviderNotConfiguredError(StationProviderError):
+    """Raised when the configured provider does not support an energy kind."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,11 +57,37 @@ class RankedStation:
     fuel_grade_match: FuelGradeMatch
 
 
+@dataclass(frozen=True, slots=True)
+class _RouteGeometry:
+    reference_latitude: float
+    projected_path: tuple[tuple[float, float], ...]
+    segment_lengths: tuple[float, ...]
+    total_length: float
+
+
 class StationProvider(Protocol):
     source_name: str
     source_url: str
 
     def list_stations(self, energy_kind: EnergyKind) -> StationSourceResult: ...
+
+
+def _default_station_json_transport(
+    url: str, timeout_seconds: float
+) -> Mapping[str, Any]:
+    request = Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": "auto-progress-squad/0.1"},
+        method="GET",
+    )
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            payload = json.load(response)
+    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError) as error:
+        raise StationProviderError("전기차 충전소 공식 API 요청에 실패했습니다.") from error
+    if not isinstance(payload, Mapping):
+        raise StationProviderError("전기차 충전소 공식 API 응답 형식이 올바르지 않습니다.")
+    return payload
 
 
 def _finite_coordinate(longitude: float, latitude: float) -> bool:
@@ -100,36 +135,47 @@ def _project_km(
     return x, y
 
 
-def _route_distance(
-    route_path: Sequence[tuple[float, float]], station: StationCandidate
-) -> tuple[float, float]:
+def _prepare_route_geometry(
+    route_path: Sequence[tuple[float, float]],
+) -> _RouteGeometry:
     reference_latitude = sum(point[1] for point in route_path) / len(route_path)
-    projected_route = [
+    projected_path = tuple(
         _project_km(longitude, latitude, reference_latitude)
         for longitude, latitude in route_path
-    ]
-    point_x, point_y = _project_km(
-        station.longitude, station.latitude, reference_latitude
     )
-    segment_lengths = [
+    segment_lengths = tuple(
         math.hypot(end_x - start_x, end_y - start_y)
         for (start_x, start_y), (end_x, end_y) in zip(
-            projected_route, projected_route[1:]
+            projected_path, projected_path[1:]
         )
-    ]
-    route_length = sum(segment_lengths)
-    if route_length <= 0:
+    )
+    total_length = sum(segment_lengths)
+    if total_length <= 0:
         raise StationProviderError("경로 좌표가 서로 다른 두 지점을 포함해야 합니다.")
+    return _RouteGeometry(
+        reference_latitude=reference_latitude,
+        projected_path=projected_path,
+        segment_lengths=segment_lengths,
+        total_length=total_length,
+    )
+
+
+def _route_distance(
+    geometry: _RouteGeometry, station: StationCandidate
+) -> tuple[float, float]:
+    point_x, point_y = _project_km(
+        station.longitude, station.latitude, geometry.reference_latitude
+    )
 
     best_distance = math.inf
     best_progress = 0.0
     traversed = 0.0
     for index, ((start_x, start_y), (end_x, end_y)) in enumerate(
-        zip(projected_route, projected_route[1:])
+        zip(geometry.projected_path, geometry.projected_path[1:])
     ):
         delta_x = end_x - start_x
         delta_y = end_y - start_y
-        segment_length = segment_lengths[index]
+        segment_length = geometry.segment_lengths[index]
         if segment_length == 0:
             continue
         projection = (
@@ -141,7 +187,9 @@ def _route_distance(
         distance = math.hypot(point_x - nearest_x, point_y - nearest_y)
         if distance < best_distance:
             best_distance = distance
-            best_progress = (traversed + ratio * segment_length) / route_length * 100
+            best_progress = (
+                (traversed + ratio * segment_length) / geometry.total_length * 100
+            )
         traversed += segment_length
     return best_distance, best_progress
 
@@ -165,6 +213,22 @@ def rank_route_stations(
     if limit < 1:
         raise StationProviderError("후보 개수는 1개 이상이어야 합니다.")
 
+    geometry = _prepare_route_geometry(route_path)
+    latitude_margin = corridor_km / 110.574
+    longitude_scale = max(
+        0.01,
+        math.cos(
+            math.radians(
+                max(abs(latitude) for _, latitude in route_path) + latitude_margin
+            )
+        ),
+    )
+    longitude_margin = corridor_km / (111.320 * longitude_scale)
+    min_longitude = min(longitude for longitude, _ in route_path) - longitude_margin
+    max_longitude = max(longitude for longitude, _ in route_path) + longitude_margin
+    min_latitude = min(latitude for _, latitude in route_path) - latitude_margin
+    max_latitude = max(latitude for _, latitude in route_path) + latitude_margin
+
     normalized_fuel_grade = fuel_grade.strip().lower() if fuel_grade else None
     ranked: list[RankedStation] = []
     for station in stations:
@@ -172,6 +236,11 @@ def rank_route_stations(
             continue
         if not _finite_coordinate(station.longitude, station.latitude):
             raise StationProviderError("충전·주유소 좌표가 유효하지 않습니다.")
+        if not (
+            min_longitude <= station.longitude <= max_longitude
+            and min_latitude <= station.latitude <= max_latitude
+        ):
+            continue
 
         fuel_grade_match: FuelGradeMatch = "not-applicable"
         if energy_kind == "fuel" and normalized_fuel_grade:
@@ -183,7 +252,7 @@ def rank_route_stations(
             else:
                 fuel_grade_match = "unknown"
 
-        distance, progress = _route_distance(route_path, station)
+        distance, progress = _route_distance(geometry, station)
         if distance <= corridor_km:
             ranked.append(
                 RankedStation(
@@ -202,6 +271,246 @@ def rank_route_stations(
         )
     )
     return tuple(ranked[:limit])
+
+
+class KecoEvChargerProvider:
+    """Reads nationwide charger information from the KECO public OpenAPI."""
+
+    source_name = "한국환경공단 전기자동차 충전소 정보"
+    source_url = "https://www.data.go.kr/data/15013115/standard.do"
+    _endpoint = "https://apis.data.go.kr/B552584/EvCharger/getChargerInfo"
+    _seoul_timezone = timezone(timedelta(hours=9))
+
+    def __init__(
+        self,
+        service_key: str,
+        *,
+        timeout_seconds: float = 10.0,
+        cache_ttl_seconds: float = 1_800.0,
+        page_size: int = 9_999,
+        max_pages: int = 100,
+        region_codes: Sequence[str] = (),
+        transport: StationJsonTransport | None = None,
+    ) -> None:
+        normalized_key = unquote(service_key.strip())
+        if not normalized_key:
+            raise ValueError("KECO EV charger service key is required")
+        if timeout_seconds <= 0:
+            raise ValueError("KECO EV charger timeout must be greater than zero")
+        if cache_ttl_seconds < 0:
+            raise ValueError("KECO EV charger cache TTL must not be negative")
+        if not 10 <= page_size <= 9_999:
+            raise ValueError("KECO EV charger page size must be between 10 and 9999")
+        if max_pages < 1:
+            raise ValueError("KECO EV charger max pages must be at least 1")
+        normalized_regions = tuple(
+            dict.fromkeys(code.strip() for code in region_codes if code.strip())
+        )
+        if any(len(code) != 2 or not code.isdigit() for code in normalized_regions):
+            raise ValueError("KECO EV charger region codes must be two digits")
+
+        self._service_key = normalized_key
+        self._timeout_seconds = timeout_seconds
+        self._cache_ttl_seconds = cache_ttl_seconds
+        self._page_size = page_size
+        self._max_pages = max_pages
+        self._region_codes = normalized_regions
+        self._transport = transport or _default_station_json_transport
+        self._cached_result: StationSourceResult | None = None
+        self._cache_expires_at = 0.0
+
+    @staticmethod
+    def _response_body(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        response = payload.get("response")
+        if isinstance(response, Mapping):
+            return response
+        return payload
+
+    @classmethod
+    def _page_items(
+        cls, payload: Mapping[str, Any]
+    ) -> tuple[list[Mapping[str, Any]], int]:
+        response = cls._response_body(payload)
+        header = response.get("header")
+        body = response.get("body")
+        header_mapping = header if isinstance(header, Mapping) else response
+        body_mapping = body if isinstance(body, Mapping) else response
+        result_code = str(header_mapping.get("resultCode", "")).strip()
+        if result_code != "00":
+            raise StationProviderError("전기차 충전소 공식 API가 요청을 처리하지 못했습니다.")
+
+        raw_total = body_mapping.get("totalCount", response.get("totalCount", 0))
+        try:
+            total_count = int(raw_total)
+        except (TypeError, ValueError) as error:
+            raise StationProviderError("전기차 충전소 공식 API 전체 건수를 확인할 수 없습니다.") from error
+        if total_count < 0:
+            raise StationProviderError("전기차 충전소 공식 API 전체 건수가 올바르지 않습니다.")
+
+        items_container = body_mapping.get("items", response.get("items"))
+        if items_container in (None, ""):
+            return [], total_count
+        if isinstance(items_container, Mapping):
+            raw_items = items_container.get("item", [])
+        else:
+            raw_items = items_container
+        if isinstance(raw_items, Mapping):
+            raw_items = [raw_items]
+        if not isinstance(raw_items, list) or any(
+            not isinstance(item, Mapping) for item in raw_items
+        ):
+            raise StationProviderError("전기차 충전소 공식 API 목록 형식이 올바르지 않습니다.")
+        return [item for item in raw_items if isinstance(item, Mapping)], total_count
+
+    def _request_page(
+        self, page_number: int, region_code: str | None
+    ) -> Mapping[str, Any]:
+        params = {
+            "serviceKey": self._service_key,
+            "pageNo": str(page_number),
+            "numOfRows": str(self._page_size),
+            "dataType": "JSON",
+        }
+        if region_code:
+            params["zcode"] = region_code
+        return self._transport(
+            f"{self._endpoint}?{urlencode(params)}", self._timeout_seconds
+        )
+
+    def _fetch_items(self) -> list[Mapping[str, Any]]:
+        all_items: list[Mapping[str, Any]] = []
+        regions: tuple[str | None, ...] = self._region_codes or (None,)
+        for region_code in regions:
+            page_number = 1
+            received = 0
+            while True:
+                page_items, total_count = self._page_items(
+                    self._request_page(page_number, region_code)
+                )
+                all_items.extend(page_items)
+                received += len(page_items)
+                if received >= total_count:
+                    break
+                if not page_items:
+                    raise StationProviderError("전기차 충전소 공식 API 페이지가 누락되었습니다.")
+                if page_number >= self._max_pages:
+                    raise StationProviderError("전기차 충전소 공식 API 페이지 제한을 초과했습니다.")
+                page_number += 1
+        return all_items
+
+    @classmethod
+    def _parse_observed_at(cls, raw_value: Any) -> str | None:
+        value = str(raw_value or "").strip()
+        if not value:
+            return None
+        try:
+            observed = datetime.strptime(value, "%Y%m%d%H%M%S").replace(
+                tzinfo=cls._seoul_timezone
+            )
+        except ValueError:
+            return None
+        return observed.isoformat()
+
+    @staticmethod
+    def _parse_power_kw(raw_value: Any) -> float | None:
+        try:
+            power_kw = float(raw_value)
+        except (TypeError, ValueError):
+            return None
+        return power_kw if math.isfinite(power_kw) and power_kw > 0 else None
+
+    @staticmethod
+    def _charger_status(raw_value: Any) -> StationStatus:
+        value = str(raw_value or "").strip()
+        if value == "2":
+            return "available"
+        if value in {"3", "6"}:
+            return "busy"
+        if value in {"1", "4", "5"}:
+            return "unavailable"
+        return "unknown"
+
+    @staticmethod
+    def _aggregate_status(statuses: Sequence[StationStatus]) -> StationStatus:
+        if "available" in statuses:
+            return "available"
+        if "busy" in statuses:
+            return "busy"
+        if "unavailable" in statuses:
+            return "unavailable"
+        return "unknown"
+
+    @classmethod
+    def _normalize_stations(
+        cls, items: Sequence[Mapping[str, Any]]
+    ) -> tuple[StationCandidate, ...]:
+        grouped: dict[str, list[Mapping[str, Any]]] = {}
+        for item in items:
+            station_id = str(item.get("statId", "")).strip()
+            if not station_id or str(item.get("delYn", "N")).strip().upper() == "Y":
+                continue
+            grouped.setdefault(station_id, []).append(item)
+
+        stations: list[StationCandidate] = []
+        for station_id, chargers in grouped.items():
+            first = chargers[0]
+            name = str(first.get("statNm", "")).strip()
+            primary_address = str(first.get("addr", "")).strip()
+            detail_address = str(first.get("addrDetail", "")).strip()
+            address = " ".join(part for part in (primary_address, detail_address) if part)
+            try:
+                latitude = float(first.get("lat"))
+                longitude = float(first.get("lng"))
+            except (TypeError, ValueError):
+                continue
+            if not name or not address or not _finite_coordinate(longitude, latitude):
+                continue
+
+            statuses = [cls._charger_status(item.get("stat")) for item in chargers]
+            observed_values = [
+                observed
+                for observed in (
+                    cls._parse_observed_at(item.get("statUpdDt")) for item in chargers
+                )
+                if observed is not None
+            ]
+            power_values = [
+                power
+                for power in (cls._parse_power_kw(item.get("output")) for item in chargers)
+                if power is not None
+            ]
+            stations.append(
+                StationCandidate(
+                    station_id=station_id,
+                    name=name,
+                    address=address,
+                    longitude=longitude,
+                    latitude=latitude,
+                    energy_kind="electric",
+                    status=cls._aggregate_status(statuses),
+                    status_observed_at=max(observed_values, default=None),
+                    power_kw=max(power_values, default=None),
+                )
+            )
+        return tuple(stations)
+
+    def list_stations(self, energy_kind: EnergyKind) -> StationSourceResult:
+        if energy_kind != "electric":
+            raise StationProviderNotConfiguredError(
+                "선택한 동력원의 충전·주유소 공급자가 설정되지 않았습니다."
+            )
+        now = time.monotonic()
+        if self._cached_result is not None and now < self._cache_expires_at:
+            return self._cached_result
+
+        result = StationSourceResult(
+            stations=self._normalize_stations(self._fetch_items()),
+            retrieved_at=datetime.now(UTC).isoformat(),
+        )
+        validate_station_source_result(self.source_name, self.source_url, result)
+        self._cached_result = result
+        self._cache_expires_at = now + self._cache_ttl_seconds
+        return result
 
 
 class JsonStationProvider:
