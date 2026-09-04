@@ -4,6 +4,7 @@ import {
   calculateEvPlan,
   calculateFuelPlan,
   calculateRangePlan,
+  type EnergyFillMode,
   type EvPlannerResult,
   type FuelPlannerResult,
   type FuelRefuelMode,
@@ -39,17 +40,32 @@ function EvResultView({ result }: { result: EvPlannerResult }) {
   const arrivalLabel = result.arrivalSocWithoutChargePercent < 0
     ? `도달 불가 (${result.arrivalSocWithoutChargePercent}%)`
     : `${result.arrivalSocWithoutChargePercent}%`;
+  const voluntarilyCharged = result.status === "sufficient" && result.plannedChargeKwh > 0;
+  const decisionLabel = result.status === "sufficient"
+    ? voluntarilyCharged ? "선택 충전" : "충전 불필요"
+    : result.needsEnRouteStop ? "경로 중 충전 필요" : "출발 전 충전 필요";
+  const decisionText = result.status === "sufficient"
+    ? voluntarilyCharged
+      ? "필수 충전은 아니지만 출발 전 100% 충전하는 선택으로 계산했습니다."
+      : "현재 조건으로 최소 SoC를 지키며 도착할 수 있습니다."
+    : result.needsEnRouteStop
+      ? `출발 전 100% 충전해도 부족하므로 경로 중 최소 ${result.enRouteChargeKwh} kWh를 추가 충전해야 합니다.`
+      : `출발 전에 최소 ${result.requiredChargeKwh} kWh를 충전해야 합니다.`;
 
   return (
     <div className="result-body">
       <div className={`planner-decision ${result.status}`}>
-        <span>{result.status === "sufficient" ? "충전 불필요" : "충전 필요"}</span>
-        <strong>{result.status === "sufficient" ? "현재 조건으로 최소 SoC를 지키며 도착할 수 있습니다." : "출발 전 또는 경로 중 충전이 필요합니다."}</strong>
+        <span>{decisionLabel}</span>
+        <strong>{decisionText}</strong>
       </div>
       <dl>
         <div><dt>예상 소비전력</dt><dd>{result.tripEnergyKwh} kWh</dd></div>
         <div><dt>충전 없이 도착 SoC</dt><dd>{arrivalLabel}</dd></div>
         <div><dt>최소 필요 충전량</dt><dd>{result.requiredChargeKwh} kWh</dd></div>
+        <div><dt>선택 계획 충전량</dt><dd>{result.plannedChargeKwh} kWh</dd></div>
+        <div><dt>출발 전 충전량</dt><dd>{result.departureChargeKwh} kWh</dd></div>
+        <div><dt>경로 중 추가량</dt><dd>{result.enRouteChargeKwh} kWh</dd></div>
+        <div><dt>계획 충전 후 도착 SoC</dt><dd>{result.arrivalSocAfterPlannedChargePercent}%</dd></div>
         <div><dt>최소 SoC까지 주행거리</dt><dd>{result.availableDistanceToReserveKm} km</dd></div>
       </dl>
       <div className="calculation-breakdown" aria-label="EV 계산 조건과 계산식">
@@ -59,6 +75,7 @@ function EvResultView({ result }: { result: EvPlannerResult }) {
           <li>경로 소비전력 = {result.routeDistanceKm} km ÷ {result.efficiencyKmPerKwh} km/kWh = {result.tripEnergyKwh} kWh</li>
           <li>도착 예상 SoC = {result.currentSocPercent}% - ({result.tripEnergyKwh} ÷ {result.batteryCapacityKwh} × 100) = {result.arrivalSocWithoutChargePercent}%</li>
           <li>최소 필요 충전량 = max(0, 소비전력 + 도착 예비전력 {result.reserveEnergyKwh} kWh - 현재 에너지) = {result.requiredChargeKwh} kWh</li>
+          <li>계획 충전량 {result.plannedChargeKwh} kWh · {result.chargeMode === "full" ? "출발 전 100% 충전" : "필요한 만큼 충전"} 기준</li>
         </ul>
       </div>
     </div>
@@ -163,6 +180,7 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
   const [battery, setBattery] = useState("42");
   const [efficiency, setEfficiency] = useState("5.1");
   const [minimumArrivalSoc, setMinimumArrivalSoc] = useState("10");
+  const [evChargeMode, setEvChargeMode] = useState<EnergyFillMode>("minimum");
   const [remainingRange, setRemainingRange] = useState("120");
   const [fuelTankCapacity, setFuelTankCapacity] = useState(vehicle.fuelTankCapacityLiters?.toString() ?? "");
   const [currentFuel, setCurrentFuel] = useState("20");
@@ -194,6 +212,7 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
         currentSocPercent: Number(battery),
         efficiencyKmPerKwh: Number(efficiency),
         minimumArrivalSocPercent: Number(minimumArrivalSoc),
+        chargeMode: evChargeMode,
       })
       : hydrogen
         ? calculateRangePlan({
@@ -415,14 +434,27 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
             </>
           )}
         </div>
-        {!electric && !hydrogen ? (
+        {electric ? (
+          <fieldset className="trip-mode-selector">
+            <legend>충전 방식</legend>
+            <label><input type="radio" name="energy-fill-mode" value="minimum" checked={evChargeMode === "minimum"} onChange={() => setEvChargeMode("minimum")} />필요한 만큼 충전</label>
+            <label><input type="radio" name="energy-fill-mode" value="full" checked={evChargeMode === "full"} onChange={() => setEvChargeMode("full")} />출발 전 100% 충전</label>
+            <span>100% 충전으로도 부족하면 경로 중 추가로 필요한 양을 분리해 표시합니다.</span>
+          </fieldset>
+        ) : hydrogen ? (
+          <fieldset className="trip-mode-selector">
+            <legend>충전 방식</legend>
+            <label><input type="radio" name="energy-fill-mode" checked disabled />가득 충전 원칙</label>
+            <span>현재 플래너는 국내 운용 관행에 따라 가득 충전을 기본값으로 고정합니다. 실제 충전량은 차량 탱크 사양, 충전기 압력과 충전소 저장 탱크 잔량에 따라 달라질 수 있습니다.</span>
+          </fieldset>
+        ) : (
           <fieldset className="trip-mode-selector">
             <legend>주유 방식</legend>
-            <label><input type="radio" name="fuel-mode" value="minimum" checked={fuelRefuelMode === "minimum"} onChange={() => setFuelRefuelMode("minimum")} />필요한 만큼</label>
-            <label><input type="radio" name="fuel-mode" value="full" checked={fuelRefuelMode === "full"} onChange={() => setFuelRefuelMode("full")} />출발 전 가득</label>
+            <label><input type="radio" name="energy-fill-mode" value="minimum" checked={fuelRefuelMode === "minimum"} onChange={() => setFuelRefuelMode("minimum")} />필요한 만큼 주유</label>
+            <label><input type="radio" name="energy-fill-mode" value="full" checked={fuelRefuelMode === "full"} onChange={() => setFuelRefuelMode("full")} />출발 전 가득 주유</label>
             <span>가득 주유로도 부족하면 경로 중 추가로 필요한 양을 분리해 표시합니다.</span>
           </fieldset>
-        ) : null}
+        )}
         {routeLookup && selectedRoute ? <div className="route-lookup-status" role="status"><strong>{routeLookup.sourceName} · {tripMode === "round-trip" ? "왕복 · " : ""}{ROUTE_OPTION_LABELS[selectedRoute.routeOption]}</strong><span>{selectedRoute.distanceKm} km · 약 {selectedRoute.durationMinutes}분 · 통행료 {selectedRoute.tollFare.toLocaleString()}원</span><span>{routeLookup.departure.address} → {routeLookup.destination.address}{tripMode === "round-trip" ? " → 출발지" : ""}</span></div> : null}
         {routeAlternatives.length > 1 ? (
           <div className="route-alternatives" aria-label="조회된 실제 경로 선택">

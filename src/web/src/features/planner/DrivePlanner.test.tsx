@@ -238,4 +238,38 @@ describe("DrivePlanner route lookup", () => {
     expect(result.getByText("8,500 원")).toBeInTheDocument();
     expect(result.getByText(/탱크 용량 60 L/)).toBeInTheDocument();
   });
+
+  it("offers EV minimum or full charging and applies the selected plan", () => {
+    render(<DrivePlanner vehicle={vehicle} />);
+
+    expect(screen.getByRole("radio", { name: "필요한 만큼 충전" })).toBeChecked();
+    const fullCharge = screen.getByRole("radio", { name: "출발 전 100% 충전" });
+    expect(fullCharge).toBeEnabled();
+    fireEvent.click(fullCharge);
+    fireEvent.click(screen.getByRole("button", { name: "직접 입력 거리로 계산" }));
+
+    const result = within(screen.getByLabelText("로컬 플래너 계산 결과"));
+    expect(result.getByText("선택 충전")).toBeInTheDocument();
+    expect(result.getByText("필수 충전은 아니지만 출발 전 100% 충전하는 선택으로 계산했습니다.")).toBeInTheDocument();
+    expect(result.getByText(/계획 충전량 48.7 kWh · 출발 전 100% 충전 기준/)).toBeInTheDocument();
+    expect(result.getByText("76.7%")).toBeInTheDocument();
+  });
+
+  it("fixes hydrogen to the full-fill principle instead of offering a selectable amount", () => {
+    const hydrogenVehicle: VehicleProfile = {
+      id: "test-hydrogen",
+      nickname: "넥쏘 테스트",
+      manufacturer: "현대",
+      model: "넥쏘",
+      modelYear: 2021,
+      powertrain: "hydrogen",
+    };
+    render(<DrivePlanner vehicle={hydrogenVehicle} />);
+
+    const fullFill = screen.getByRole("radio", { name: "가득 충전 원칙" });
+    expect(fullFill).toBeChecked();
+    expect(fullFill).toBeDisabled();
+    expect(screen.queryByRole("radio", { name: "필요한 만큼 충전" })).not.toBeInTheDocument();
+    expect(screen.getByText(/차량 탱크 사양, 충전기 압력과 충전소 저장 탱크 잔량/)).toBeInTheDocument();
+  });
 });

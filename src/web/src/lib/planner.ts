@@ -5,12 +5,15 @@ export interface PlannerValidationFailure {
   errors: string[];
 }
 
+export type EnergyFillMode = "minimum" | "full";
+
 export interface EvPlannerInput {
   routeDistanceKm: number;
   batteryCapacityKwh: number;
   currentSocPercent: number;
   efficiencyKmPerKwh: number;
   minimumArrivalSocPercent: number;
+  chargeMode: EnergyFillMode;
 }
 
 export interface EvPlannerResult {
@@ -22,12 +25,18 @@ export interface EvPlannerResult {
   currentSocPercent: number;
   efficiencyKmPerKwh: number;
   minimumArrivalSocPercent: number;
+  chargeMode: EnergyFillMode;
   currentEnergyKwh: number;
   tripEnergyKwh: number;
   reserveEnergyKwh: number;
   arrivalSocWithoutChargePercent: number;
+  arrivalSocAfterPlannedChargePercent: number;
   availableDistanceToReserveKm: number;
   requiredChargeKwh: number;
+  departureChargeKwh: number;
+  enRouteChargeKwh: number;
+  plannedChargeKwh: number;
+  needsEnRouteStop: boolean;
 }
 
 export interface RangePlannerInput {
@@ -46,7 +55,7 @@ export interface RangePlannerResult {
   requiredAdditionalRangeKm: number;
 }
 
-export type FuelRefuelMode = "minimum" | "full";
+export type FuelRefuelMode = EnergyFillMode;
 
 export interface FuelPlannerInput {
   routeDistanceKm: number;
@@ -119,6 +128,14 @@ export function calculateEvPlan(input: EvPlannerInput): EvPlannerCalculation {
   const availableSocPercent = Math.max(0, input.currentSocPercent - input.minimumArrivalSocPercent);
   const availableDistanceToReserveKm = input.batteryCapacityKwh * availableSocPercent / 100 * input.efficiencyKmPerKwh;
   const requiredChargeKwh = Math.max(0, tripEnergyKwh + reserveEnergyKwh - currentEnergyKwh);
+  const availableBatterySpaceKwh = input.batteryCapacityKwh - currentEnergyKwh;
+  const departureChargeKwh = input.chargeMode === "full"
+    ? availableBatterySpaceKwh
+    : Math.min(requiredChargeKwh, availableBatterySpaceKwh);
+  const enRouteChargeKwh = Math.max(0, requiredChargeKwh - departureChargeKwh);
+  const plannedChargeKwh = departureChargeKwh + enRouteChargeKwh;
+  const arrivalEnergyAfterPlannedChargeKwh = currentEnergyKwh + plannedChargeKwh - tripEnergyKwh;
+  const arrivalSocAfterPlannedChargePercent = arrivalEnergyAfterPlannedChargeKwh / input.batteryCapacityKwh * 100;
 
   return {
     ok: true,
@@ -129,12 +146,18 @@ export function calculateEvPlan(input: EvPlannerInput): EvPlannerCalculation {
     currentSocPercent: round(input.currentSocPercent),
     efficiencyKmPerKwh: round(input.efficiencyKmPerKwh),
     minimumArrivalSocPercent: round(input.minimumArrivalSocPercent),
+    chargeMode: input.chargeMode,
     currentEnergyKwh: round(currentEnergyKwh),
     tripEnergyKwh: round(tripEnergyKwh),
     reserveEnergyKwh: round(reserveEnergyKwh),
     arrivalSocWithoutChargePercent: round(arrivalSocWithoutChargePercent),
+    arrivalSocAfterPlannedChargePercent: round(arrivalSocAfterPlannedChargePercent),
     availableDistanceToReserveKm: round(availableDistanceToReserveKm),
     requiredChargeKwh: round(requiredChargeKwh),
+    departureChargeKwh: round(departureChargeKwh),
+    enRouteChargeKwh: round(enRouteChargeKwh),
+    plannedChargeKwh: round(plannedChargeKwh),
+    needsEnRouteStop: enRouteChargeKwh > 0,
   };
 }
 

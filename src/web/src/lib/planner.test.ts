@@ -8,6 +8,7 @@ describe("calculateEvPlan", () => {
       currentSocPercent: 42,
       efficiencyKmPerKwh: 5.1,
       minimumArrivalSocPercent: 10,
+      chargeMode: "minimum",
     });
 
     expect(result).toEqual({
@@ -19,12 +20,18 @@ describe("calculateEvPlan", () => {
       currentSocPercent: 42,
       efficiencyKmPerKwh: 5.1,
       minimumArrivalSocPercent: 10,
+      chargeMode: "minimum",
       currentEnergyKwh: 35.3,
       tripEnergyKwh: 19.6,
       reserveEnergyKwh: 8.4,
       arrivalSocWithoutChargePercent: 18.7,
+      arrivalSocAfterPlannedChargePercent: 18.7,
       availableDistanceToReserveKm: 137.1,
       requiredChargeKwh: 0,
+      departureChargeKwh: 0,
+      enRouteChargeKwh: 0,
+      plannedChargeKwh: 0,
+      needsEnRouteStop: false,
     });
   });
 
@@ -35,6 +42,7 @@ describe("calculateEvPlan", () => {
       currentSocPercent: 42,
       efficiencyKmPerKwh: 5.1,
       minimumArrivalSocPercent: 10,
+      chargeMode: "minimum",
     });
 
     expect(result.ok).toBe(true);
@@ -43,6 +51,9 @@ describe("calculateEvPlan", () => {
     expect(result.tripEnergyKwh).toBe(49);
     expect(result.arrivalSocWithoutChargePercent).toBe(-16.4);
     expect(result.requiredChargeKwh).toBe(22.1);
+    expect(result.departureChargeKwh).toBe(22.1);
+    expect(result.enRouteChargeKwh).toBe(0);
+    expect(result.arrivalSocAfterPlannedChargePercent).toBe(10);
   });
 
   it("allows a minimum arrival SoC above the current SoC and reports charging required", () => {
@@ -52,6 +63,7 @@ describe("calculateEvPlan", () => {
       currentSocPercent: 20,
       efficiencyKmPerKwh: 5,
       minimumArrivalSocPercent: 30,
+      chargeMode: "minimum",
     });
 
     expect(result.ok).toBe(true);
@@ -61,6 +73,51 @@ describe("calculateEvPlan", () => {
     expect(result.requiredChargeKwh).toBe(10);
   });
 
+  it("fills to 100 percent before departure when full charging is selected", () => {
+    const result = calculateEvPlan({
+      routeDistanceKm: 100,
+      batteryCapacityKwh: 84,
+      currentSocPercent: 42,
+      efficiencyKmPerKwh: 5.1,
+      minimumArrivalSocPercent: 10,
+      chargeMode: "full",
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      status: "sufficient",
+      chargeMode: "full",
+      requiredChargeKwh: 0,
+      departureChargeKwh: 48.7,
+      enRouteChargeKwh: 0,
+      plannedChargeKwh: 48.7,
+      arrivalSocAfterPlannedChargePercent: 76.7,
+      needsEnRouteStop: false,
+    }));
+  });
+
+  it("separates additional en-route energy when a full battery cannot preserve the arrival reserve", () => {
+    const result = calculateEvPlan({
+      routeDistanceKm: 600,
+      batteryCapacityKwh: 84,
+      currentSocPercent: 42,
+      efficiencyKmPerKwh: 5,
+      minimumArrivalSocPercent: 10,
+      chargeMode: "full",
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      status: "stop-required",
+      requiredChargeKwh: 93.1,
+      departureChargeKwh: 48.7,
+      enRouteChargeKwh: 44.4,
+      plannedChargeKwh: 93.1,
+      arrivalSocAfterPlannedChargePercent: 10,
+      needsEnRouteStop: true,
+    }));
+  });
+
   it("returns every relevant validation error instead of calculating with invalid values", () => {
     expect(calculateEvPlan({
       routeDistanceKm: 0,
@@ -68,6 +125,7 @@ describe("calculateEvPlan", () => {
       currentSocPercent: 101,
       efficiencyKmPerKwh: 0,
       minimumArrivalSocPercent: -1,
+      chargeMode: "minimum",
     })).toEqual({
       ok: false,
       errors: [
