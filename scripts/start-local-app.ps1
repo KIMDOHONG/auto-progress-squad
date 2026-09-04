@@ -15,12 +15,21 @@ $uvicornExecutable = Join-Path $apiDirectory ".venv\Scripts\uvicorn.exe"
 $viteEntrypoint = Join-Path $webDirectory "node_modules\vite\bin\vite.js"
 $viteRelativeEntrypoint = "node_modules\vite\bin\vite.js"
 $nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
+$nodeCandidates = @()
+if ($nodeCommand) { $nodeCandidates += $nodeCommand.Source }
+if ($env:ProgramFiles) { $nodeCandidates += (Join-Path $env:ProgramFiles "nodejs\node.exe") }
+if (${env:ProgramFiles(x86)}) { $nodeCandidates += (Join-Path ${env:ProgramFiles(x86)} "nodejs\node.exe") }
+if ($env:LOCALAPPDATA) { $nodeCandidates += (Join-Path $env:LOCALAPPDATA "Programs\nodejs\node.exe") }
+if ($env:USERPROFILE) {
+    $nodeCandidates += (Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe")
+}
+$nodeExecutable = $nodeCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 
 if (-not (Test-Path -LiteralPath $uvicornExecutable)) {
     throw "백엔드 실행 파일이 없습니다. 먼저 README의 백엔드 설치 단계를 실행해 주세요: $uvicornExecutable"
 }
-if (-not $nodeCommand) {
-    throw "Node.js를 찾지 못했습니다. 먼저 Node.js와 pnpm 설치 단계를 완료해 주세요."
+if (-not $nodeExecutable) {
+    throw "Node.js를 찾지 못했습니다. Node.js를 설치하거나 Codex 데스크톱 앱에서 이 저장소를 다시 연 뒤 실행해 주세요."
 }
 if (-not (Test-Path -LiteralPath $viteEntrypoint)) {
     throw "프런트엔드 의존성이 없습니다. src/web에서 pnpm install을 먼저 실행해 주세요."
@@ -106,7 +115,7 @@ try {
         -WorkingDirectory $apiDirectory -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput $apiOutputLog -RedirectStandardError $apiErrorLog
 
-    $webProcess = Start-Process -FilePath $nodeCommand.Source `
+    $webProcess = Start-Process -FilePath $nodeExecutable `
         -ArgumentList @($viteRelativeEntrypoint, "--host", "127.0.0.1", "--port", "$WebPort", "--strictPort") `
         -WorkingDirectory $webDirectory -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput $webOutputLog -RedirectStandardError $webErrorLog

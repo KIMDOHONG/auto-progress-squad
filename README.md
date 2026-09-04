@@ -108,7 +108,7 @@ AI 코파일럿에서는 현대·기아·제네시스 차명과 연식을 제조
 
 ### 2. FastAPI와 함께 로컬 실행
 
-Windows에서는 저장소 루트에서 아래 단일 명령을 사용하는 방법을 권장합니다. NAVER Client ID와 Client Secret을 차례로 입력하면 FastAPI(`8000`)와 Vite(`5173`)가 함께 실행되고 브라우저가 열립니다. 키는 파일이나 명령행에 저장되지 않으며 이 PowerShell 창에서 `Ctrl+C`를 누르면 두 서버가 함께 종료됩니다.
+Windows에서는 저장소 루트에서 아래 단일 명령을 사용하는 방법을 권장합니다. NAVER Client ID와 Client Secret을 차례로 입력하면 FastAPI(`8000`)와 Vite(`5173`)가 함께 실행되고 브라우저가 열립니다. 시스템 PATH에 Node.js가 없어도 Codex 데스크톱에 포함된 Node.js를 자동으로 찾습니다. 키는 파일이나 명령행에 저장되지 않으며 이 PowerShell 창에서 `Ctrl+C`를 누르면 두 서버가 함께 종료됩니다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\start-local-app.ps1
