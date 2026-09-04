@@ -348,3 +348,44 @@ class RouteLookupResponse(BaseModel):
     source_name: str
     source_url: str
     retrieved_at: str
+
+
+EnergyKind = Literal["electric", "hydrogen", "fuel"]
+StationStatus = Literal["available", "busy", "unavailable", "unknown"]
+
+
+class StationSearchRequest(BaseModel):
+    energy_kind: EnergyKind
+    route_path: list[RouteCoordinateResponse] = Field(min_length=2, max_length=10_000)
+    corridor_km: float = Field(default=5, gt=0, le=50)
+    limit: int = Field(default=5, ge=1, le=20)
+    fuel_grade: str | None = Field(default=None, max_length=50)
+
+
+class StationCandidateResponse(BaseModel):
+    station_id: str
+    name: str
+    address: str
+    longitude: float
+    latitude: float
+    energy_kind: EnergyKind
+    status: StationStatus
+    status_observed_at: str | None
+    power_kw: float | None
+    pressure_bar: int | None
+    fuel_grades: list[str]
+    fuel_grade_match: Literal["confirmed", "unknown", "not-applicable"]
+    distance_to_route_km: float
+    route_progress_percent: float
+    source_url: str | None
+
+
+class StationSearchResponse(BaseModel):
+    status: Literal["matched", "no_results"]
+    energy_kind: EnergyKind
+    corridor_km: float
+    stations: list[StationCandidateResponse]
+    warnings: list[str]
+    source_name: str
+    source_url: str
+    retrieved_at: str

@@ -44,6 +44,11 @@ from .recall_provider import (
     validate_recall_records,
 )
 from .route_provider import RouteLocation, RouteLocationNotFoundError, RouteProviderError
+from .station_provider import (
+    StationProviderError,
+    rank_route_stations,
+    validate_station_source_result,
+)
 from .schemas import (
     ApiErrorResponse,
     HealthResponse,
@@ -66,6 +71,9 @@ from .schemas import (
     RouteLocationResponse,
     RouteLookupRequest,
     RouteLookupResponse,
+    StationCandidateResponse,
+    StationSearchRequest,
+    StationSearchResponse,
     VehicleCreate,
     VehicleListResponse,
     VehicleProfile,
@@ -295,6 +303,84 @@ def lookup_planner_route(
         source_name=provider.source_name,
         source_url=provider.source_url,
         retrieved_at=datetime.now(UTC).isoformat(),
+    )
+
+
+@router.post(
+    "/planner/stations",
+    response_model=StationSearchResponse,
+    responses={503: {"model": ApiErrorResponse}},
+    tags=["planner"],
+)
+def search_planner_stations(
+    request: Request, payload: StationSearchRequest
+) -> StationSearchResponse:
+    provider = getattr(request.app.state, "station_provider", None)
+    if provider is None:
+        raise ServiceNotConfiguredError(
+            code="station_source_not_configured",
+            message="충전·주유소 데이터 공급자가 설정되지 않았습니다.",
+        )
+    try:
+        source_result = provider.list_stations(payload.energy_kind)
+        validate_station_source_result(
+            provider.source_name, provider.source_url, source_result
+        )
+        ranked = rank_route_stations(
+            [
+                (point.longitude, point.latitude)
+                for point in payload.route_path
+            ],
+            source_result.stations,
+            energy_kind=payload.energy_kind,
+            corridor_km=payload.corridor_km,
+            limit=payload.limit,
+            fuel_grade=payload.fuel_grade,
+        )
+    except StationProviderError:
+        raise ApiError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "station_source_unavailable",
+            "충전·주유소 후보를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+            retryable=True,
+        ) from None
+
+    warnings = ["표시된 상태에는 충전·주유 대기시간이 포함되지 않습니다."]
+    if any(candidate.station.status_observed_at is None for candidate in ranked):
+        warnings.append("상태 조회시각이 없는 후보는 현재 이용 가능 여부를 직접 확인해야 합니다.")
+    if payload.energy_kind == "fuel" and any(
+        candidate.fuel_grade_match == "unknown" for candidate in ranked
+    ):
+        warnings.append("지정연료 취급 여부가 미확인인 주유소가 포함되어 있습니다.")
+
+    return StationSearchResponse(
+        status="matched" if ranked else "no_results",
+        energy_kind=payload.energy_kind,
+        corridor_km=payload.corridor_km,
+        stations=[
+            StationCandidateResponse(
+                station_id=candidate.station.station_id,
+                name=candidate.station.name,
+                address=candidate.station.address,
+                longitude=candidate.station.longitude,
+                latitude=candidate.station.latitude,
+                energy_kind=candidate.station.energy_kind,
+                status=candidate.station.status,
+                status_observed_at=candidate.station.status_observed_at,
+                power_kw=candidate.station.power_kw,
+                pressure_bar=candidate.station.pressure_bar,
+                fuel_grades=list(candidate.station.fuel_grades),
+                fuel_grade_match=candidate.fuel_grade_match,
+                distance_to_route_km=candidate.distance_to_route_km,
+                route_progress_percent=candidate.route_progress_percent,
+                source_url=candidate.station.source_url,
+            )
+            for candidate in ranked
+        ],
+        warnings=warnings,
+        source_name=provider.source_name,
+        source_url=provider.source_url,
+        retrieved_at=source_result.retrieved_at,
     )
 
 

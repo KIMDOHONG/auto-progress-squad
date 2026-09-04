@@ -35,6 +35,7 @@ class Settings:
     naver_maps_client_secret: str | None = None
     naver_maps_browser_client_id: str | None = None
     naver_maps_timeout_seconds: float = 5.0
+    station_catalog_path: Path | None = None
 
     def __post_init__(self) -> None:
         if self.manual_search_mode not in {"keyword", "embedding"}:
@@ -79,6 +80,7 @@ class Settings:
             "APS_MANUAL_ANSWER_MODE", "source-list"
         ).strip().lower()
         configured_model_path = os.getenv("APS_MANUAL_GENERATION_MODEL_PATH")
+        configured_station_catalog_path = os.getenv("APS_STATION_CATALOG_PATH")
         return cls(
             database_path=database_path,
             cors_origins=cors_origins,
@@ -121,5 +123,10 @@ class Settings:
             ),
             naver_maps_timeout_seconds=float(
                 os.getenv("APS_NAVER_MAPS_TIMEOUT_SECONDS", "5")
+            ),
+            station_catalog_path=(
+                Path(configured_station_catalog_path)
+                if configured_station_catalog_path
+                else None
             ),
         )

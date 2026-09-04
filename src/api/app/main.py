@@ -13,6 +13,7 @@ from .manual_embedding_search import EmbeddingManualSearcher
 from .manual_grounded_answer import OpenVINOGroundedAnswerGenerator
 from .recall_provider import RecallProvider
 from .route_provider import NaverMapsRouteProvider, RouteProvider
+from .station_provider import JsonStationProvider, StationProvider
 from .routes import router
 
 
@@ -21,6 +22,7 @@ def create_app(
     *,
     recall_provider: RecallProvider | None = None,
     route_provider: RouteProvider | None = None,
+    station_provider: StationProvider | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings.from_env()
 
@@ -37,6 +39,11 @@ def create_app(
             )
             if resolved_settings.naver_maps_client_id
             and resolved_settings.naver_maps_client_secret
+            else None
+        )
+        app.state.station_provider = station_provider or (
+            JsonStationProvider(resolved_settings.station_catalog_path)
+            if resolved_settings.station_catalog_path
             else None
         )
         app.state.manual_embedding_search = (
