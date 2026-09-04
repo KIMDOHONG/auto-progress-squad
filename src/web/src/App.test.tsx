@@ -66,12 +66,17 @@ describe("vehicle-aware planner", () => {
     const plannerButtons = await screen.findAllByRole("button", { name: /주유 경로 플래너/ });
     expect(plannerButtons).toHaveLength(2);
     fireEvent.click(plannerButtons[0]);
-    expect(await screen.findByText("BMW M3 · 2021 · 고급 휘발유 기준")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/경로 거리/), { target: { value: "180" } });
+    expect(await screen.findByText("BMW M3 · 2021 · 고급 휘발유·연료량·평균 연비 기준")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/경로 거리/), { target: { value: "120" } });
+    fireEvent.change(screen.getByLabelText(/연료탱크 용량/), { target: { value: "60" } });
+    fireEvent.change(screen.getByLabelText(/현재 연료량/), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText(/최근 평균 연비/), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText(/도착 희망 잔량/), { target: { value: "5" } });
     fireEvent.click(screen.getByRole("button", { name: "직접 입력 거리로 계산" }));
     const result = within(screen.getByLabelText("로컬 플래너 계산 결과"));
-    expect(result.getByText("주유 필요")).toBeInTheDocument();
-    expect(result.getByText(/최소 60 km의 추가 주행가능거리/)).toBeInTheDocument();
+    expect(result.getByText("출발 전 주유 필요")).toBeInTheDocument();
+    expect(result.getByText("출발 전에 최소 5L를 주유해야 합니다.")).toBeInTheDocument();
+    expect(result.getByText("8,500 원")).toBeInTheDocument();
     expect(result.getByText("고급 휘발유")).toBeInTheDocument();
   });
 

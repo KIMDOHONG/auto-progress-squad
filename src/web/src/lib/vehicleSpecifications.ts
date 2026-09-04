@@ -59,6 +59,10 @@ const KIA_EV9_SOURCE = "https://www.kia.com/kr/vehicles/ev9/specification";
 const KIA_EV9_GT_SOURCE = "https://www.kia.com/kr/vehicles/ev9-gt/specification";
 const KIA_RAY_EV_SOURCE = "https://www.kia.com/kr/vehicles/ray-ev/specification";
 const KIA_NIRO_PLUS_SOURCE = "https://www.kia.com/kr/vehicles/niro-plus/price";
+const KIA_K5_GASOLINE_2025_SOURCE = "https://ownersmanual.kia.com/full_webhelp/DL3/2025/ko_KR/topics/chapter9_5.html";
+const KIA_K5_GASOLINE_2026_SOURCE = "https://ownersmanual.kia.com/full_webhelp/DL3/2026/ko_KR/topics/chapter9_5.html";
+const KIA_K5_HYBRID_2025_SOURCE = "https://ownersmanual.kia.com/full_webhelp/DL3KH/2025/ko_KR/topics/chapter9_5.html";
+const KIA_K5_HYBRID_2026_SOURCE = "https://ownersmanual.kia.com/full_webhelp/DL3KH/2026/ko_KR/topics/chapter9_5.html";
 const GENESIS_EV_SOURCE = "https://www.genesis.com/kr/ko/support/notice/detail/0000000547.html";
 
 /** 용량·공식 근거는 한 번만 저장하고 여러 차종/연식/구동 조합에서 참조한다. */
@@ -82,6 +86,8 @@ export const ENERGY_STORAGE_DEFINITIONS: Record<string, EnergyStorageDefinition>
   "kia-81.4": { batteryCapacityKwh: 81.4, sourceUrl: KIA_EV_SOURCE, verifiedAt: "2026-09-03" },
   "kia-84": { batteryCapacityKwh: 84, sourceUrl: KIA_EV6_SOURCE, verifiedAt: "2026-09-03" },
   "kia-99.8": { batteryCapacityKwh: 99.8, sourceUrl: KIA_EV9_SOURCE, verifiedAt: "2026-09-03" },
+  "kia-fuel-50": { fuelTankCapacityLiters: 50, sourceUrl: KIA_K5_HYBRID_2026_SOURCE, verifiedAt: "2026-09-04" },
+  "kia-fuel-60": { fuelTankCapacityLiters: 60, sourceUrl: KIA_K5_GASOLINE_2026_SOURCE, verifiedAt: "2026-09-04" },
   "genesis-84": { batteryCapacityKwh: 84, sourceUrl: GENESIS_EV_SOURCE, verifiedAt: "2026-09-03" },
   "genesis-94.5": { batteryCapacityKwh: 94.5, sourceUrl: GENESIS_EV_SOURCE, verifiedAt: "2026-09-03" },
 };
@@ -145,6 +151,20 @@ const MODELS: ModelDefinition[] = [
   { id: "kia-niro-ev", ...KIA, model: "니로 EV", modelAliases: ["니로 EV", "니로EV", "NIRO EV"], modelYears: [2023, 2024, 2025, 2026], variants: [{ id: "2wd", powertrainDetail: "2WD", energyStorageId: "kia-64.8" }] },
   { id: "kia-niro-plus", ...KIA, model: "니로 플러스", modelAliases: ["니로 플러스", "니로PLUS", "NIRO PLUS"], modelYears: [2023], variants: [{ id: "2wd", powertrainDetail: "2WD", energyStorageId: "kia-64" }] },
   { id: "kia-ray-ev", ...KIA, model: "레이 EV", modelAliases: ["레이 EV", "레이EV", "RAY EV"], modelYears: [2024, 2025, 2026, 2027], sourceUrl: KIA_RAY_EV_SOURCE, variants: [{ id: "2wd", powertrainDetail: "2WD", powertrainDetailAliases: ["EV 2WD"], energyStorageId: "kia-35.2" }] },
+  { id: "kia-k5-gasoline", ...KIA, model: "K5", modelAliases: ["K5", "더 뉴 K5"], modelYears: [2025], powertrain: "gasoline", sourceUrl: KIA_K5_GASOLINE_2025_SOURCE, verifiedAt: "2026-09-04", variants: [
+    { id: "1.6-t-gdi", powertrainDetail: "스마트스트림 G1.6 T-GDI", powertrainDetailAliases: ["1.6 가솔린 터보", "1.6 터보", "G1.6 T-GDI"], energyStorageId: "kia-fuel-60" },
+    { id: "2.0-cvvl", powertrainDetail: "스마트스트림 G2.0 CVVL", powertrainDetailAliases: ["2.0 가솔린", "2.0", "G2.0 CVVL"], energyStorageId: "kia-fuel-60" },
+  ] },
+  { id: "kia-k5-gasoline", ...KIA, model: "K5", modelAliases: ["K5", "더 뉴 K5"], modelYears: [2026], powertrain: "gasoline", sourceUrl: KIA_K5_GASOLINE_2026_SOURCE, verifiedAt: "2026-09-04", variants: [
+    { id: "1.6-t-gdi", powertrainDetail: "스마트스트림 G1.6 T-GDI", powertrainDetailAliases: ["1.6 가솔린 터보", "1.6 터보", "G1.6 T-GDI"], energyStorageId: "kia-fuel-60" },
+    { id: "2.0-cvvl", powertrainDetail: "스마트스트림 G2.0 CVVL", powertrainDetailAliases: ["2.0 가솔린", "2.0", "G2.0 CVVL"], energyStorageId: "kia-fuel-60" },
+  ] },
+  { id: "kia-k5-hybrid", ...KIA, model: "K5", modelAliases: ["K5", "더 뉴 K5", "K5 하이브리드"], modelYears: [2025], powertrain: "hybrid", sourceUrl: KIA_K5_HYBRID_2025_SOURCE, verifiedAt: "2026-09-04", variants: [
+    { id: "2.0-hybrid", powertrainDetail: "스마트스트림 G2.0 하이브리드", powertrainDetailAliases: ["2.0 하이브리드", "하이브리드"], energyStorageId: "kia-fuel-50" },
+  ] },
+  { id: "kia-k5-hybrid", ...KIA, model: "K5", modelAliases: ["K5", "더 뉴 K5", "K5 하이브리드"], modelYears: [2026], powertrain: "hybrid", sourceUrl: KIA_K5_HYBRID_2026_SOURCE, verifiedAt: "2026-09-04", variants: [
+    { id: "2.0-hybrid", powertrainDetail: "스마트스트림 G2.0 하이브리드", powertrainDetailAliases: ["2.0 하이브리드", "하이브리드"], energyStorageId: "kia-fuel-50" },
+  ] },
   { id: "genesis-gv60", ...GENESIS, model: "GV60", modelAliases: ["GV60"], modelYears: [2026, 2027], variants: [
     { id: "standard-2wd", powertrainDetail: "스탠다드 2WD", energyStorageId: "genesis-84" },
     { id: "standard-awd", powertrainDetail: "스탠다드 AWD", powertrainDetailAliases: ["스탠다드 4WD"], energyStorageId: "genesis-84" },

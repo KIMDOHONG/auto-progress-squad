@@ -46,8 +46,42 @@ export interface RangePlannerResult {
   requiredAdditionalRangeKm: number;
 }
 
+export type FuelRefuelMode = "minimum" | "full";
+
+export interface FuelPlannerInput {
+  routeDistanceKm: number;
+  fuelTankCapacityLiters: number;
+  currentFuelLiters: number;
+  efficiencyKmPerLiter: number;
+  minimumArrivalFuelLiters: number;
+  fuelPriceWonPerLiter: number;
+  refuelMode: FuelRefuelMode;
+}
+
+export interface FuelPlannerResult {
+  ok: true;
+  kind: "fuel";
+  status: PlannerStatus;
+  routeDistanceKm: number;
+  fuelTankCapacityLiters: number;
+  currentFuelLiters: number;
+  efficiencyKmPerLiter: number;
+  minimumArrivalFuelLiters: number;
+  fuelPriceWonPerLiter: number;
+  refuelMode: FuelRefuelMode;
+  tripFuelLiters: number;
+  requiredRefuelLiters: number;
+  departureRefuelLiters: number;
+  enRouteRefuelLiters: number;
+  plannedRefuelLiters: number;
+  arrivalFuelLiters: number;
+  plannedCostWon: number;
+  needsEnRouteStop: boolean;
+}
+
 export type EvPlannerCalculation = EvPlannerResult | PlannerValidationFailure;
 export type RangePlannerCalculation = RangePlannerResult | PlannerValidationFailure;
+export type FuelPlannerCalculation = FuelPlannerResult | PlannerValidationFailure;
 
 function round(value: number): number {
   return Math.round((value + Number.EPSILON) * 10) / 10;
@@ -126,5 +160,65 @@ export function calculateRangePlan(input: RangePlannerInput): RangePlannerCalcul
     remainingRangeKm: round(input.remainingRangeKm),
     remainingMarginKm: round(Math.max(0, remainingMarginKm)),
     requiredAdditionalRangeKm: round(Math.max(0, -remainingMarginKm)),
+  };
+}
+
+export function calculateFuelPlan(input: FuelPlannerInput): FuelPlannerCalculation {
+  const errors: string[] = [];
+
+  if (!isFiniteNumber(input.routeDistanceKm) || input.routeDistanceKm <= 0) {
+    errors.push("경로 거리는 0보다 큰 값이어야 합니다.");
+  }
+  if (!isFiniteNumber(input.fuelTankCapacityLiters) || input.fuelTankCapacityLiters <= 0) {
+    errors.push("연료탱크 용량을 입력해 주세요.");
+  }
+  if (!isFiniteNumber(input.currentFuelLiters) || input.currentFuelLiters < 0) {
+    errors.push("현재 연료량은 0 이상의 값이어야 합니다.");
+  } else if (input.fuelTankCapacityLiters > 0 && input.currentFuelLiters > input.fuelTankCapacityLiters) {
+    errors.push("현재 연료량은 연료탱크 용량을 넘을 수 없습니다.");
+  }
+  if (!isFiniteNumber(input.efficiencyKmPerLiter) || input.efficiencyKmPerLiter <= 0) {
+    errors.push("평균 연비는 0보다 큰 값이어야 합니다.");
+  }
+  if (!isFiniteNumber(input.minimumArrivalFuelLiters) || input.minimumArrivalFuelLiters < 0) {
+    errors.push("도착 희망 잔량은 0 이상의 값이어야 합니다.");
+  } else if (input.fuelTankCapacityLiters > 0 && input.minimumArrivalFuelLiters > input.fuelTankCapacityLiters) {
+    errors.push("도착 희망 잔량은 연료탱크 용량을 넘을 수 없습니다.");
+  }
+  if (!isFiniteNumber(input.fuelPriceWonPerLiter) || input.fuelPriceWonPerLiter <= 0) {
+    errors.push("예상 연료 단가는 0보다 큰 값이어야 합니다.");
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+
+  const tripFuelLiters = input.routeDistanceKm / input.efficiencyKmPerLiter;
+  const requiredRefuelLiters = Math.max(0, tripFuelLiters + input.minimumArrivalFuelLiters - input.currentFuelLiters);
+  const availableTankSpaceLiters = input.fuelTankCapacityLiters - input.currentFuelLiters;
+  const departureRefuelLiters = input.refuelMode === "full"
+    ? availableTankSpaceLiters
+    : Math.min(requiredRefuelLiters, availableTankSpaceLiters);
+  const enRouteRefuelLiters = Math.max(0, requiredRefuelLiters - departureRefuelLiters);
+  const plannedRefuelLiters = departureRefuelLiters + enRouteRefuelLiters;
+  const arrivalFuelLiters = input.currentFuelLiters + plannedRefuelLiters - tripFuelLiters;
+
+  return {
+    ok: true,
+    kind: "fuel",
+    status: requiredRefuelLiters > 0 ? "stop-required" : "sufficient",
+    routeDistanceKm: round(input.routeDistanceKm),
+    fuelTankCapacityLiters: round(input.fuelTankCapacityLiters),
+    currentFuelLiters: round(input.currentFuelLiters),
+    efficiencyKmPerLiter: round(input.efficiencyKmPerLiter),
+    minimumArrivalFuelLiters: round(input.minimumArrivalFuelLiters),
+    fuelPriceWonPerLiter: Math.round(input.fuelPriceWonPerLiter),
+    refuelMode: input.refuelMode,
+    tripFuelLiters: round(tripFuelLiters),
+    requiredRefuelLiters: round(requiredRefuelLiters),
+    departureRefuelLiters: round(departureRefuelLiters),
+    enRouteRefuelLiters: round(enRouteRefuelLiters),
+    plannedRefuelLiters: round(plannedRefuelLiters),
+    arrivalFuelLiters: round(arrivalFuelLiters),
+    plannedCostWon: Math.round(plannedRefuelLiters * input.fuelPriceWonPerLiter),
+    needsEnRouteStop: enRouteRefuelLiters > 0,
   };
 }

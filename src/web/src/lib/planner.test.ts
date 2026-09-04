@@ -1,4 +1,4 @@
-import { calculateEvPlan, calculateRangePlan } from "./planner";
+import { calculateEvPlan, calculateFuelPlan, calculateRangePlan } from "./planner";
 
 describe("calculateEvPlan", () => {
   it("marks a route as sufficient when the minimum arrival SoC is preserved", () => {
@@ -116,6 +116,105 @@ describe("calculateRangePlan", () => {
       errors: [
         "경로 거리는 0보다 큰 값이어야 합니다.",
         "현재 주행가능거리는 0 이상의 값이어야 합니다.",
+      ],
+    });
+  });
+});
+
+describe("calculateFuelPlan", () => {
+  it("calculates the minimum fuel and cost needed to preserve the arrival reserve", () => {
+    expect(calculateFuelPlan({
+      routeDistanceKm: 120,
+      fuelTankCapacityLiters: 60,
+      currentFuelLiters: 10,
+      efficiencyKmPerLiter: 12,
+      minimumArrivalFuelLiters: 5,
+      fuelPriceWonPerLiter: 1700,
+      refuelMode: "minimum",
+    })).toEqual({
+      ok: true,
+      kind: "fuel",
+      status: "stop-required",
+      routeDistanceKm: 120,
+      fuelTankCapacityLiters: 60,
+      currentFuelLiters: 10,
+      efficiencyKmPerLiter: 12,
+      minimumArrivalFuelLiters: 5,
+      fuelPriceWonPerLiter: 1700,
+      refuelMode: "minimum",
+      tripFuelLiters: 10,
+      requiredRefuelLiters: 5,
+      departureRefuelLiters: 5,
+      enRouteRefuelLiters: 0,
+      plannedRefuelLiters: 5,
+      arrivalFuelLiters: 5,
+      plannedCostWon: 8500,
+      needsEnRouteStop: false,
+    });
+  });
+
+  it("separates the departure fill from an additional en-route refuel", () => {
+    const result = calculateFuelPlan({
+      routeDistanceKm: 600,
+      fuelTankCapacityLiters: 50,
+      currentFuelLiters: 20,
+      efficiencyKmPerLiter: 10,
+      minimumArrivalFuelLiters: 5,
+      fuelPriceWonPerLiter: 1700,
+      refuelMode: "full",
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      status: "stop-required",
+      requiredRefuelLiters: 45,
+      departureRefuelLiters: 30,
+      enRouteRefuelLiters: 15,
+      plannedRefuelLiters: 45,
+      arrivalFuelLiters: 5,
+      plannedCostWon: 76500,
+      needsEnRouteStop: true,
+    }));
+  });
+
+  it("does not require fuel when the current amount already preserves the reserve", () => {
+    const result = calculateFuelPlan({
+      routeDistanceKm: 120,
+      fuelTankCapacityLiters: 60,
+      currentFuelLiters: 30,
+      efficiencyKmPerLiter: 12,
+      minimumArrivalFuelLiters: 5,
+      fuelPriceWonPerLiter: 1700,
+      refuelMode: "minimum",
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      status: "sufficient",
+      requiredRefuelLiters: 0,
+      plannedRefuelLiters: 0,
+      arrivalFuelLiters: 20,
+      plannedCostWon: 0,
+    }));
+  });
+
+  it("rejects fuel amounts outside the selected tank and invalid calculation inputs", () => {
+    expect(calculateFuelPlan({
+      routeDistanceKm: 0,
+      fuelTankCapacityLiters: 50,
+      currentFuelLiters: 51,
+      efficiencyKmPerLiter: 0,
+      minimumArrivalFuelLiters: 51,
+      fuelPriceWonPerLiter: 0,
+      refuelMode: "minimum",
+    })).toEqual({
+      ok: false,
+      errors: [
+        "경로 거리는 0보다 큰 값이어야 합니다.",
+        "현재 연료량은 연료탱크 용량을 넘을 수 없습니다.",
+        "평균 연비는 0보다 큰 값이어야 합니다.",
+        "도착 희망 잔량은 연료탱크 용량을 넘을 수 없습니다.",
+        "예상 연료 단가는 0보다 큰 값이어야 합니다.",
       ],
     });
   });

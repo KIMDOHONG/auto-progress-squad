@@ -1,6 +1,14 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { BoltIcon, FuelIcon, RouteIcon } from "../../components/Icons";
-import { calculateEvPlan, calculateRangePlan, type EvPlannerResult, type RangePlannerResult } from "../../lib/planner";
+import {
+  calculateEvPlan,
+  calculateFuelPlan,
+  calculateRangePlan,
+  type EvPlannerResult,
+  type FuelPlannerResult,
+  type FuelRefuelMode,
+  type RangePlannerResult,
+} from "../../lib/planner";
 import {
   combineRoundTripRoutes,
   getPlannerMapConfig,
@@ -18,7 +26,7 @@ import { RouteMap } from "./RouteMap";
 
 interface DrivePlannerProps { vehicle: VehicleProfile; apiBaseUrl?: string; }
 
-type PlannerResult = EvPlannerResult | RangePlannerResult;
+type PlannerResult = EvPlannerResult | FuelPlannerResult | RangePlannerResult;
 type TripMode = "one-way" | "round-trip";
 
 const ROUTE_OPTION_LABELS: Record<RouteOption, string> = {
@@ -85,6 +93,48 @@ function RangeResultView({ result, fuelLabel }: { result: RangePlannerResult; fu
   );
 }
 
+function FuelResultView({ result, fuelLabel }: { result: FuelPlannerResult; fuelLabel: string }) {
+  const voluntarilyFilled = result.status === "sufficient" && result.plannedRefuelLiters > 0;
+  const decisionLabel = result.status === "sufficient"
+    ? voluntarilyFilled ? "선택 주유" : "주유 불필요"
+    : result.needsEnRouteStop ? "경로 중 주유 필요" : "출발 전 주유 필요";
+  const decisionText = result.status === "sufficient"
+    ? voluntarilyFilled
+      ? "필수 주유는 아니지만 출발 전 가득 주유하는 선택으로 계산했습니다."
+      : "현재 연료로 도착 희망 잔량을 지키며 도착할 수 있습니다."
+    : result.needsEnRouteStop
+      ? `출발 전 가득 주유해도 부족하므로 경로 중 최소 ${result.enRouteRefuelLiters}L를 추가 주유해야 합니다.`
+      : `출발 전에 최소 ${result.requiredRefuelLiters}L를 주유해야 합니다.`;
+
+  return (
+    <div className="result-body">
+      <div className={`planner-decision ${result.status}`}>
+        <span>{decisionLabel}</span>
+        <strong>{decisionText}</strong>
+      </div>
+      <dl>
+        <div><dt>예상 소비 연료</dt><dd>{result.tripFuelLiters} L</dd></div>
+        <div><dt>최소 필요 주유량</dt><dd>{result.requiredRefuelLiters} L</dd></div>
+        <div><dt>선택 계획 주유량</dt><dd>{result.plannedRefuelLiters} L</dd></div>
+        <div><dt>예상 주유 비용</dt><dd>{result.plannedCostWon.toLocaleString()} 원</dd></div>
+        <div><dt>출발 전 주유량</dt><dd>{result.departureRefuelLiters} L</dd></div>
+        <div><dt>경로 중 추가량</dt><dd>{result.enRouteRefuelLiters} L</dd></div>
+        <div><dt>도착 예상 잔량</dt><dd>{result.arrivalFuelLiters} L</dd></div>
+        <div><dt>지정 연료</dt><dd>{fuelLabel}</dd></div>
+      </dl>
+      <div className="calculation-breakdown" aria-label="주유량 계산 조건과 계산식">
+        <strong>계산 조건·계산식</strong>
+        <ul>
+          <li>예상 소비 연료 = {result.routeDistanceKm} km ÷ {result.efficiencyKmPerLiter} km/L = {result.tripFuelLiters} L</li>
+          <li>최소 필요 주유량 = max(0, 소비 연료 + 도착 희망 {result.minimumArrivalFuelLiters} L - 현재 {result.currentFuelLiters} L) = {result.requiredRefuelLiters} L</li>
+          <li>예상 비용 = 계획 주유량 {result.plannedRefuelLiters} L × 예상 단가 {result.fuelPriceWonPerLiter.toLocaleString()} 원/L = {result.plannedCostWon.toLocaleString()} 원</li>
+          <li>탱크 용량 {result.fuelTankCapacityLiters} L · {result.refuelMode === "full" ? "출발 전 가득 주유" : "필요한 만큼 주유"} 기준</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 function ExternalDataNotice({ kind, routeLookup }: { kind: PlannerResult["kind"]; routeLookup: RouteLookupResult | null }) {
   const missingData = kind === "electric"
     ? "충전소 위치·실시간 상태·충전곡선·충전시간"
@@ -114,6 +164,12 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
   const [efficiency, setEfficiency] = useState("5.1");
   const [minimumArrivalSoc, setMinimumArrivalSoc] = useState("10");
   const [remainingRange, setRemainingRange] = useState("120");
+  const [fuelTankCapacity, setFuelTankCapacity] = useState(vehicle.fuelTankCapacityLiters?.toString() ?? "");
+  const [currentFuel, setCurrentFuel] = useState("20");
+  const [fuelEfficiency, setFuelEfficiency] = useState("12");
+  const [minimumArrivalFuel, setMinimumArrivalFuel] = useState("5");
+  const [fuelPrice, setFuelPrice] = useState("1700");
+  const [fuelRefuelMode, setFuelRefuelMode] = useState<FuelRefuelMode>("minimum");
   const [result, setResult] = useState<PlannerResult | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [routeLookup, setRouteLookup] = useState<RouteLookupResult | null>(null);
@@ -139,11 +195,21 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
         efficiencyKmPerKwh: Number(efficiency),
         minimumArrivalSocPercent: Number(minimumArrivalSoc),
       })
-      : calculateRangePlan({
+      : hydrogen
+        ? calculateRangePlan({
         routeDistanceKm: Number(distance),
         remainingRangeKm: Number(remainingRange),
-        kind: hydrogen ? "hydrogen" : "fuel",
-      });
+        kind: "hydrogen",
+      })
+        : calculateFuelPlan({
+          routeDistanceKm: Number(distance),
+          fuelTankCapacityLiters: Number(fuelTankCapacity),
+          currentFuelLiters: Number(currentFuel),
+          efficiencyKmPerLiter: Number(fuelEfficiency),
+          minimumArrivalFuelLiters: Number(minimumArrivalFuel),
+          fuelPriceWonPerLiter: Number(fuelPrice),
+          refuelMode: fuelRefuelMode,
+        });
 
     if (!calculation.ok) {
       setErrors(calculation.errors);
@@ -286,8 +352,8 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
       <div className="page-heading compact">
         <div>
           <p className="section-caption">활성 차량 자동 분기 · 로컬 계산{apiBaseUrl ? " · 실제 경로 선택 조회" : ""}</p>
-          <h1>{electric ? "EV 충전·주행 플래너" : hydrogen ? "수소 충전·주행 플래너" : "특수연료 주유 경로 플래너"}</h1>
-          <p>{getVehicleTitle(vehicle)} · {electric ? "배터리와 전비 기준" : hydrogen ? "현재 주행가능거리 기준" : `${fuelLabel} 기준`}</p>
+          <h1>{electric ? "EV 충전·주행 플래너" : hydrogen ? "수소 충전·주행 플래너" : "주유·주행 플래너"}</h1>
+          <p>{getVehicleTitle(vehicle)} · {electric ? "배터리와 전비 기준" : hydrogen ? "현재 주행가능거리 기준" : `${fuelLabel}·연료량·평균 연비 기준`}</p>
         </div>
         <span className={electric ? "planner-symbol ev" : hydrogen ? "planner-symbol hydrogen" : "planner-symbol fuel"}>{electric ? <BoltIcon /> : <FuelIcon />}</span>
       </div>
@@ -333,13 +399,30 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
               <label htmlFor="planner-efficiency">최근 전비<input id="planner-efficiency" type="number" min="0.1" step="0.1" value={efficiency} onChange={(event) => setEfficiency(event.target.value)} /><span className="input-suffix" aria-hidden="true">km/kWh</span></label>
               <label htmlFor="planner-minimum-soc">도착 최소 SoC<input id="planner-minimum-soc" type="number" min="0" max="100" step="0.1" value={minimumArrivalSoc} onChange={(event) => setMinimumArrivalSoc(event.target.value)} /><span className="input-suffix" aria-hidden="true">%</span></label>
             </>
-          ) : (
+          ) : hydrogen ? (
             <>
               <label htmlFor="planner-remaining-range">현재 주행가능거리<input id="planner-remaining-range" type="number" min="0" step="0.1" value={remainingRange} onChange={(event) => setRemainingRange(event.target.value)} /><span className="input-suffix" aria-hidden="true">km</span></label>
-              <label htmlFor="planner-fuel">{hydrogen ? "충전 연료" : "검색 연료"}<input id="planner-fuel" value={fuelLabel} readOnly /></label>
+              <label htmlFor="planner-fuel">충전 연료<input id="planner-fuel" value={fuelLabel} readOnly /></label>
+            </>
+          ) : (
+            <>
+              <label htmlFor="planner-tank-capacity">연료탱크 용량<input id="planner-tank-capacity" type="number" min="0.1" max="300" step="0.1" value={fuelTankCapacity} readOnly={vehicle.fuelTankCapacityLiters !== undefined} onChange={(event) => setFuelTankCapacity(event.target.value)} /><span className="input-suffix" aria-hidden="true">L</span></label>
+              <label htmlFor="planner-current-fuel">현재 연료량<input id="planner-current-fuel" type="number" min="0" step="0.1" value={currentFuel} onChange={(event) => setCurrentFuel(event.target.value)} /><span className="input-suffix" aria-hidden="true">L</span></label>
+              <label htmlFor="planner-fuel-efficiency">최근 평균 연비<input id="planner-fuel-efficiency" type="number" min="0.1" step="0.1" value={fuelEfficiency} onChange={(event) => setFuelEfficiency(event.target.value)} /><span className="input-suffix" aria-hidden="true">km/L</span></label>
+              <label htmlFor="planner-arrival-fuel">도착 희망 잔량<input id="planner-arrival-fuel" type="number" min="0" step="0.1" value={minimumArrivalFuel} onChange={(event) => setMinimumArrivalFuel(event.target.value)} /><span className="input-suffix" aria-hidden="true">L</span></label>
+              <label htmlFor="planner-fuel-price">예상 연료 단가<input id="planner-fuel-price" type="number" min="1" step="1" value={fuelPrice} onChange={(event) => setFuelPrice(event.target.value)} /><span className="input-suffix" aria-hidden="true">원/L</span></label>
+              <label htmlFor="planner-fuel">지정 연료<input id="planner-fuel" value={fuelLabel} readOnly /></label>
             </>
           )}
         </div>
+        {!electric && !hydrogen ? (
+          <fieldset className="trip-mode-selector">
+            <legend>주유 방식</legend>
+            <label><input type="radio" name="fuel-mode" value="minimum" checked={fuelRefuelMode === "minimum"} onChange={() => setFuelRefuelMode("minimum")} />필요한 만큼</label>
+            <label><input type="radio" name="fuel-mode" value="full" checked={fuelRefuelMode === "full"} onChange={() => setFuelRefuelMode("full")} />출발 전 가득</label>
+            <span>가득 주유로도 부족하면 경로 중 추가로 필요한 양을 분리해 표시합니다.</span>
+          </fieldset>
+        ) : null}
         {routeLookup && selectedRoute ? <div className="route-lookup-status" role="status"><strong>{routeLookup.sourceName} · {tripMode === "round-trip" ? "왕복 · " : ""}{ROUTE_OPTION_LABELS[selectedRoute.routeOption]}</strong><span>{selectedRoute.distanceKm} km · 약 {selectedRoute.durationMinutes}분 · 통행료 {selectedRoute.tollFare.toLocaleString()}원</span><span>{routeLookup.departure.address} → {routeLookup.destination.address}{tripMode === "round-trip" ? " → 출발지" : ""}</span></div> : null}
         {routeAlternatives.length > 1 ? (
           <div className="route-alternatives" aria-label="조회된 실제 경로 선택">
@@ -377,7 +460,8 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
         <aside className="planner-results" aria-label="로컬 플래너 계산 결과" aria-live="polite">
           <div className="result-header"><span className="local-badge">{routeLookup ? "API 거리 + 로컬 계산" : "로컬 계산"}</span><strong>{result ? "계산 완료" : "입력 후 계산해 주세요"}</strong></div>
           {result?.kind === "electric" ? <EvResultView result={result} /> : null}
-          {result && result.kind !== "electric" ? <RangeResultView result={result} fuelLabel={fuelLabel} /> : null}
+          {result?.kind === "hydrogen" ? <RangeResultView result={result} fuelLabel={fuelLabel} /> : null}
+          {result?.kind === "fuel" && "fuelTankCapacityLiters" in result ? <FuelResultView result={result} fuelLabel={fuelLabel} /> : null}
           {result ? <ExternalDataNotice kind={result.kind} routeLookup={routeLookup} /> : <p className="result-placeholder">입력한 거리와 활성 차량의 에너지 조건을 사용해 도착 가능 여부를 계산합니다.</p>}
           <p className="result-disclaimer">계산값은 날씨·속도·경사·공조 사용·배터리 또는 연료 상태 변화를 반영하지 않은 참고값입니다.</p>
         </aside>

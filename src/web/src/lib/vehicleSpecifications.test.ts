@@ -91,4 +91,41 @@ describe("verified vehicle specification catalog", () => {
     expect(ENERGY_STORAGE_DEFINITIONS["kia-81.4"]).toEqual(expect.objectContaining({ batteryCapacityKwh: 81.4 }));
     expect(Object.values(ENERGY_STORAGE_DEFINITIONS).filter((item) => item.batteryCapacityKwh === 81.4)).toHaveLength(1);
   });
+
+  it("maps the 2025 K5 gasoline powertrain to its official 60 L tank", () => {
+    expect(resolveVehicleSpecification(
+      "기아",
+      "더 뉴 K5",
+      2025,
+      "gasoline",
+      "1.6 가솔린 터보",
+      "노블레스",
+    )).toEqual(expect.objectContaining({
+      id: "kia-k5-gasoline-2025-1.6-t-gdi",
+      fuelTankCapacityLiters: 60,
+      sourceUrl: "https://ownersmanual.kia.com/full_webhelp/DL3/2025/ko_KR/topics/chapter9_5.html",
+    }));
+  });
+
+  it("keeps the K5 hybrid tank separate from the gasoline model", () => {
+    expect(resolveVehicleSpecification(
+      "KIA",
+      "K5 하이브리드",
+      2026,
+      "hybrid",
+      "2.0 하이브리드",
+      "시그니처",
+    )).toEqual(expect.objectContaining({
+      id: "kia-k5-hybrid-2026-2.0-hybrid",
+      fuelTankCapacityLiters: 50,
+      sourceUrl: "https://ownersmanual.kia.com/full_webhelp/DL3KH/2026/ko_KR/topics/chapter9_5.html",
+    }));
+    expect(ENERGY_STORAGE_DEFINITIONS["kia-fuel-50"].fuelTankCapacityLiters).toBe(50);
+    expect(ENERGY_STORAGE_DEFINITIONS["kia-fuel-60"].fuelTankCapacityLiters).toBe(60);
+  });
+
+  it("does not infer a tank for an unverified model year or mismatched powertrain", () => {
+    expect(findVehicleSpecifications("기아", "K5", 2027, "gasoline")).toEqual([]);
+    expect(findVehicleSpecifications("기아", "K5", 2026, "diesel")).toEqual([]);
+  });
 });

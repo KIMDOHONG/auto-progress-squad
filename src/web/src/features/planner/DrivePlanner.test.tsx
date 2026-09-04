@@ -207,4 +207,35 @@ describe("DrivePlanner route lookup", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("현재 앱을 연 브라우저에서 위치 정보를 사용할 수 없습니다");
     expect(screen.getByRole("alert")).toHaveTextContent("Windows 위치 서비스와 이 브라우저의 위치 권한");
   });
+
+  it("uses a stored tank capacity to calculate the required fuel and cost", () => {
+    const fuelVehicle: VehicleProfile = {
+      id: "test-k5",
+      nickname: "K5 테스트",
+      manufacturer: "기아",
+      model: "K5",
+      modelYear: 2026,
+      powertrain: "gasoline",
+      powertrainDetail: "스마트스트림 G1.6 T-GDI",
+      trim: "노블레스",
+      fuelGrade: "regular",
+      fuelTankCapacityLiters: 60,
+    };
+    render(<DrivePlanner vehicle={fuelVehicle} />);
+
+    expect(screen.getByLabelText(/연료탱크 용량/)).toHaveValue(60);
+    expect(screen.getByLabelText(/연료탱크 용량/)).toHaveAttribute("readonly");
+    fireEvent.change(screen.getByLabelText(/경로 거리/), { target: { value: "120" } });
+    fireEvent.change(screen.getByLabelText(/현재 연료량/), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText(/최근 평균 연비/), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText(/도착 희망 잔량/), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText(/예상 연료 단가/), { target: { value: "1700" } });
+    fireEvent.click(screen.getByRole("button", { name: "직접 입력 거리로 계산" }));
+
+    const result = within(screen.getByLabelText("로컬 플래너 계산 결과"));
+    expect(result.getByText("계산 완료")).toBeInTheDocument();
+    expect(result.getByText("출발 전에 최소 5L를 주유해야 합니다.")).toBeInTheDocument();
+    expect(result.getByText("8,500 원")).toBeInTheDocument();
+    expect(result.getByText(/탱크 용량 60 L/)).toBeInTheDocument();
+  });
 });
