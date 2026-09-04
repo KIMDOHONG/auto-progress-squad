@@ -14,12 +14,16 @@ import {
   combineRoundTripRoutes,
   getPlannerMapConfig,
   lookupApiRoute,
+  lookupApiStations,
   resolveApiLocation,
   reverseApiLocation,
+  RouteApiError,
   type RouteAlternativeResult,
   type RouteLocationResult,
   type RouteLookupResult,
   type RouteOption,
+  type StationCandidateResult,
+  type StationLookupResult,
 } from "../../lib/routeApi";
 import { FUEL_GRADE_LABELS, getVehicleTitle, isEv, isHydrogen } from "../../lib/vehicle";
 import type { VehicleProfile } from "../../types";
@@ -152,16 +156,59 @@ function FuelResultView({ result, fuelLabel }: { result: FuelPlannerResult; fuel
   );
 }
 
-function ExternalDataNotice({ kind, routeLookup }: { kind: PlannerResult["kind"]; routeLookup: RouteLookupResult | null }) {
-  const missingData = kind === "electric"
-    ? "충전소 위치·실시간 상태·충전곡선·충전시간"
-    : kind === "hydrogen"
-      ? "수소충전소 위치·운영 상태·대기 현황"
-      : "주유소 위치·가격·지정연료 취급 여부";
+const STATION_STATUS_LABELS: Record<StationCandidateResult["status"], string> = {
+  available: "이용 가능",
+  busy: "혼잡",
+  unavailable: "이용 불가",
+  unknown: "상태 미확인",
+};
+
+function formatStationTimestamp(value: string) {
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? value : timestamp.toLocaleString("ko-KR");
+}
+
+function StationCandidateCard({ station, fuelLabel }: { station: StationCandidateResult; fuelLabel: string }) {
+  const specifications = [
+    station.powerKw !== null ? `최대 ${station.powerKw} kW` : null,
+    station.pressureBar !== null ? `${station.pressureBar} bar` : null,
+    station.fuelGradeMatch === "confirmed" ? `${fuelLabel} 취급 확인` : null,
+    station.fuelGradeMatch === "unknown" ? `${fuelLabel} 취급 미확인` : null,
+  ].filter(Boolean);
+
+  return (
+    <article className="station-candidate-card">
+      <div className="station-candidate-heading">
+        <div><strong>{station.name}</strong><span>{station.address}</span></div>
+        <span className={`station-status ${station.status}`}>{STATION_STATUS_LABELS[station.status]}</span>
+      </div>
+      <div className="station-candidate-meta">
+        <span>경로선에서 직선 약 {station.distanceToRouteKm} km</span>
+        <span>전체 경로의 약 {station.routeProgressPercent}% 지점</span>
+        {specifications.map((specification) => <span key={specification}>{specification}</span>)}
+      </div>
+      {station.statusObservedAt ? <small>상태 확인 시각: {formatStationTimestamp(station.statusObservedAt)}</small> : <small>상태 확인 시각 없음 · 방문 전 직접 확인 필요</small>}
+      {station.sourceUrl ? <a href={station.sourceUrl} target="_blank" rel="noreferrer">공급자 원문 확인 ↗</a> : null}
+    </article>
+  );
+}
+
+function ExternalDataNotice({ kind, routeLookup, stationsIncluded }: { kind: PlannerResult["kind"]; routeLookup: RouteLookupResult | null; stationsIncluded: boolean }) {
+  const missingData = stationsIncluded
+    ? kind === "electric"
+      ? "실시간 대기·충전곡선·예상 충전시간"
+      : kind === "hydrogen"
+        ? "실시간 대기·저장 탱크 잔량·실제 충전 가능량"
+        : "실시간 가격·도로 우회거리"
+    : kind === "electric"
+      ? "충전소 위치·실시간 상태·충전곡선·충전시간"
+      : kind === "hydrogen"
+        ? "수소충전소 위치·운영 상태·대기 현황"
+        : "주유소 위치·가격·지정연료 취급 여부";
 
   return (
     <div className="external-data-notice">
-      <strong>외부 데이터 미연동</strong>
+      <strong>{stationsIncluded ? "외부 데이터 일부 연동" : "외부 데이터 미연동"}</strong>
       <span>{routeLookup ? `경로 거리는 ${routeLookup.sourceName} 조회 결과를 사용했습니다.` : "이번 결과는 직접 입력한 거리만 사용한 로컬 계산입니다."} {missingData} 관련 정보는 결과에 포함하지 않았습니다.</span>
     </div>
   );
@@ -196,6 +243,10 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
   const [locationLoading, setLocationLoading] = useState<"departure" | "destination" | "gps" | null>(null);
   const [selectedRouteOption, setSelectedRouteOption] = useState<RouteOption>("trafast");
   const [mapBrowserClientId, setMapBrowserClientId] = useState<string | null>(null);
+  const [stationCorridorKm, setStationCorridorKm] = useState("5");
+  const [stationLookup, setStationLookup] = useState<StationLookupResult | null>(null);
+  const [stationError, setStationError] = useState<{ code: string; message: string } | null>(null);
+  const [stationLoading, setStationLoading] = useState(false);
   const fuelLabel = hydrogen ? "수소" : vehicle.fuelGrade ? FUEL_GRADE_LABELS[vehicle.fuelGrade] : "지정 연료";
   const routeAlternatives: RouteAlternativeResult[] = useMemo(() => routeLookup
     ? routeLookup.alternatives.length > 0 ? routeLookup.alternatives : [routeLookup]
@@ -203,6 +254,11 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
   const selectedRoute = routeAlternatives.find((route) => route.routeOption === selectedRouteOption)
     ?? routeAlternatives[0]
     ?? null;
+
+  function clearStationLookup() {
+    setStationLookup(null);
+    setStationError(null);
+  }
 
   function calculateForDistance(distance: string) {
     const calculation = electric
@@ -251,6 +307,7 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
     setSelectedRouteOption("trafast");
     setRouteError("");
     setMapBrowserClientId(null);
+    clearStationLookup();
   }
 
   async function handleLocationResolve(field: "departure" | "destination") {
@@ -334,6 +391,7 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
     }
     setRouteLoading(true);
     setRouteError("");
+    clearStationLookup();
     try {
       const routePromise = tripMode === "round-trip"
         ? Promise.all([
@@ -364,6 +422,30 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
     const distance = String(route.distanceKm);
     setRouteDistance(distance);
     calculateForDistance(distance);
+    clearStationLookup();
+  }
+
+  async function handleStationLookup() {
+    if (!apiBaseUrl || !selectedRoute || selectedRoute.path.length < 2) return;
+    setStationLoading(true);
+    setStationError(null);
+    try {
+      const lookup = await lookupApiStations(apiBaseUrl, {
+        energyKind: electric ? "electric" : hydrogen ? "hydrogen" : "fuel",
+        routePath: selectedRoute.path,
+        corridorKm: Number(stationCorridorKm),
+        limit: 5,
+        fuelGrade: electric || hydrogen ? undefined : vehicle.fuelGrade,
+      });
+      setStationLookup(lookup);
+    } catch (error) {
+      setStationLookup(null);
+      setStationError(error instanceof RouteApiError
+        ? { code: error.code, message: error.message }
+        : { code: "station_lookup_error", message: "충전·주유소 후보를 확인하지 못했습니다." });
+    } finally {
+      setStationLoading(false);
+    }
   }
 
   return (
@@ -410,7 +492,7 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
           </div>
         )}
         <div className="form-grid route-inputs planner-measurements">
-          <label htmlFor="planner-distance">{tripMode === "round-trip" ? "왕복 총 경로 거리" : "경로 거리"}<input id="planner-distance" type="number" min="0.1" step="0.1" value={routeDistance} onChange={(event) => { setRouteDistance(event.target.value); setRouteLookup(null); }} /><span className="input-suffix" aria-hidden="true">km</span></label>
+          <label htmlFor="planner-distance">{tripMode === "round-trip" ? "왕복 총 경로 거리" : "경로 거리"}<input id="planner-distance" type="number" min="0.1" step="0.1" value={routeDistance} onChange={(event) => { setRouteDistance(event.target.value); setRouteLookup(null); clearStationLookup(); }} /><span className="input-suffix" aria-hidden="true">km</span></label>
           {electric ? (
             <>
               <label htmlFor="planner-capacity">사용 가능 배터리 용량<input id="planner-capacity" type="number" min="0.1" step="0.1" value={batteryCapacity} onChange={(event) => setBatteryCapacity(event.target.value)} /><span className="input-suffix" aria-hidden="true">kWh</span></label>
@@ -475,6 +557,41 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
         </div>
       </form>
 
+      <section className="station-candidates" aria-label="선택 경로 주변 충전·주유소 후보">
+        <div className="station-candidates-header">
+          <div>
+            <p className="section-caption">선택 경로 기준</p>
+            <h2>경로 주변 {electric ? "충전소" : hydrogen ? "수소충전소" : "주유소"} 후보</h2>
+            <p>선택한 실제 경로선과 가까운 후보를 비교합니다. 표시 거리는 도로 우회거리가 아닌 경로선과의 직선거리입니다.</p>
+          </div>
+          <div className="station-search-controls">
+            <label>탐색 반경
+              <select value={stationCorridorKm} onChange={(event) => { setStationCorridorKm(event.target.value); clearStationLookup(); }}>
+                <option value="2">2 km</option><option value="5">5 km</option><option value="10">10 km</option>
+              </select>
+            </label>
+            <button type="button" className="secondary-button" disabled={!apiBaseUrl || !selectedRoute || stationLoading} onClick={() => void handleStationLookup()}>
+              {stationLoading ? "후보 확인 중…" : `경로 주변 ${electric ? "충전소" : hydrogen ? "수소충전소" : "주유소"} 찾기`}
+            </button>
+          </div>
+        </div>
+        {!selectedRoute ? <p className="station-empty-state">주소 확인 후 실제 경로를 조회하면 주변 후보를 찾을 수 있습니다. 직접 입력 거리에는 경로 좌표가 없어 후보 조회를 제공하지 않습니다.</p> : null}
+        {stationError ? (
+          <div className="station-lookup-state warning" role="status">
+            <strong>{stationError.code === "station_source_not_configured" ? "충전·주유소 공급자 미설정" : "후보 조회 실패"}</strong>
+            <span>{stationError.message} 기존 주행 계산과 경로 결과는 그대로 유지됩니다.</span>
+          </div>
+        ) : null}
+        {stationLookup?.status === "no_results" ? <div className="station-lookup-state"><strong>조건에 맞는 후보 없음</strong><span>경로선 반경 {stationLookup.corridorKm} km 안에서 후보를 찾지 못했습니다. 탐색 반경을 넓혀 다시 확인해 보세요.</span></div> : null}
+        {stationLookup?.status === "matched" ? (
+          <>
+            <div className="station-source-summary"><strong>{stationLookup.sourceName}</strong><span>자료 시각 {formatStationTimestamp(stationLookup.retrievedAt)} · 반경 {stationLookup.corridorKm} km · {stationLookup.stations.length}곳</span><a href={stationLookup.sourceUrl} target="_blank" rel="noreferrer">데이터 출처 ↗</a></div>
+            <div className="station-candidate-list">{stationLookup.stations.map((station) => <StationCandidateCard key={station.stationId} station={station} fuelLabel={fuelLabel} />)}</div>
+            {stationLookup.warnings.length > 0 ? <ul className="station-warnings">{stationLookup.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
+          </>
+        ) : null}
+      </section>
+
       <div className="planner-content">
         {routeLookup && selectedRoute ? (
           <div className="route-canvas route-canvas-live">
@@ -494,7 +611,7 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
           {result?.kind === "electric" ? <EvResultView result={result} /> : null}
           {result?.kind === "hydrogen" ? <RangeResultView result={result} fuelLabel={fuelLabel} /> : null}
           {result?.kind === "fuel" && "fuelTankCapacityLiters" in result ? <FuelResultView result={result} fuelLabel={fuelLabel} /> : null}
-          {result ? <ExternalDataNotice kind={result.kind} routeLookup={routeLookup} /> : <p className="result-placeholder">입력한 거리와 활성 차량의 에너지 조건을 사용해 도착 가능 여부를 계산합니다.</p>}
+          {result ? <ExternalDataNotice kind={result.kind} routeLookup={routeLookup} stationsIncluded={stationLookup?.status === "matched"} /> : <p className="result-placeholder">입력한 거리와 활성 차량의 에너지 조건을 사용해 도착 가능 여부를 계산합니다.</p>}
           <p className="result-disclaimer">계산값은 날씨·속도·경사·공조 사용·배터리 또는 연료 상태 변화를 반영하지 않은 참고값입니다.</p>
         </aside>
       </div>

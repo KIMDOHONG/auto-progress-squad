@@ -180,6 +180,37 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .planner-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .planner-actions .primary-button, .planner-actions .secondary-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin: 0; }
 .planner-actions svg { width: 17px; }
+.station-candidates { display: grid; gap: 14px; margin-top: 22px; border: 1px solid var(--line); border-radius: 18px; background: #fbfdff; padding: 20px; }
+.station-candidates-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.station-candidates-header h2 { margin: 3px 0 0; font-size: 18px; }
+.station-candidates-header p:not(.section-caption) { margin: 7px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.station-search-controls { display: flex; align-items: flex-end; gap: 9px; flex: 0 0 auto; }
+.station-search-controls label { display: grid; gap: 5px; color: var(--muted); font-size: 9px; font-weight: 800; }
+.station-search-controls select { height: 44px; border: 1px solid var(--line); border-radius: 11px; background: white; padding: 0 28px 0 11px; color: var(--ink); font: inherit; }
+.station-empty-state, .station-lookup-state { margin: 0; border-radius: 11px; background: #f1f5f9; padding: 12px 14px; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.station-lookup-state { display: grid; gap: 4px; }
+.station-lookup-state strong { color: var(--ink); font-size: 11px; }
+.station-lookup-state.warning { background: #fff8e8; }
+.station-lookup-state.warning strong { color: #9a5b03; }
+.station-source-summary { display: flex; align-items: center; gap: 10px; border-radius: 10px; background: #eaf8f2; padding: 10px 12px; font-size: 10px; }
+.station-source-summary strong { color: var(--green); }
+.station-source-summary span { flex: 1; color: var(--muted); }
+.station-source-summary a, .station-candidate-card a { color: var(--blue); font-weight: 800; text-decoration: none; }
+.station-candidate-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.station-candidate-card { display: grid; gap: 9px; border: 1px solid var(--line); border-radius: 13px; background: white; padding: 14px; }
+.station-candidate-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.station-candidate-heading > div { display: grid; gap: 4px; min-width: 0; }
+.station-candidate-heading strong { font-size: 12px; }
+.station-candidate-heading span:not(.station-status) { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.station-status { flex: 0 0 auto; border-radius: 999px; background: #eef2f6; padding: 5px 7px; color: #475467; font-size: 8px; font-weight: 800; }
+.station-status.available { background: #ddf8ed; color: #087e5d; }
+.station-status.busy { background: #fff2cd; color: #9a5b03; }
+.station-status.unavailable { background: #fee4e2; color: #b42318; }
+.station-candidate-meta { display: flex; flex-wrap: wrap; gap: 5px; }
+.station-candidate-meta span { border-radius: 7px; background: #f1f5f9; padding: 5px 7px; color: #42526a; font-size: 8px; font-weight: 700; }
+.station-candidate-card small { color: var(--muted); font-size: 8px; }
+.station-candidate-card a { font-size: 9px; }
+.station-warnings { display: grid; gap: 4px; margin: 0; padding-left: 18px; color: #8a5a13; font-size: 9px; line-height: 1.5; }
 .route-lookup-status, .route-lookup-error { display: grid; gap: 4px; margin-top: 14px; border: 1px solid #a7ddc9; border-radius: 11px; background: #f0fdf7; padding: 11px 13px; font-size: 11px; line-height: 1.5; }
 .route-lookup-status strong { color: var(--green); }
 .route-lookup-status span:last-child { color: var(--muted); }
@@ -369,6 +400,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   .manual-vehicle-visual { width: 190px; }
 }
 @media (max-width: 680px) {
+  .station-candidates-header, .station-search-controls { align-items: stretch; flex-direction: column; }
   .trip-mode-selector { align-items: flex-start; flex-wrap: wrap; }
   .trip-mode-selector span { flex-basis: 100%; margin-left: 0; }
   .topbar { align-items: flex-start; }

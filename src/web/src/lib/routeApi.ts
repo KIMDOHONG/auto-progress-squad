@@ -66,6 +66,68 @@ export interface PlannerMapConfig {
   browserClientId: string | null;
 }
 
+export type StationEnergyKind = "electric" | "hydrogen" | "fuel";
+export type StationAvailability = "available" | "busy" | "unavailable" | "unknown";
+export type FuelGradeMatch = "confirmed" | "unknown" | "not-applicable";
+
+export interface StationCandidateResult {
+  stationId: string;
+  name: string;
+  address: string;
+  longitude: number;
+  latitude: number;
+  energyKind: StationEnergyKind;
+  status: StationAvailability;
+  statusObservedAt: string | null;
+  powerKw: number | null;
+  pressureBar: number | null;
+  fuelGrades: string[];
+  fuelGradeMatch: FuelGradeMatch;
+  distanceToRouteKm: number;
+  routeProgressPercent: number;
+  sourceUrl: string | null;
+}
+
+export interface StationLookupResult {
+  status: "matched" | "no_results";
+  energyKind: StationEnergyKind;
+  corridorKm: number;
+  stations: StationCandidateResult[];
+  warnings: string[];
+  sourceName: string;
+  sourceUrl: string;
+  retrievedAt: string;
+}
+
+interface ApiStationCandidateResult {
+  station_id: string;
+  name: string;
+  address: string;
+  longitude: number;
+  latitude: number;
+  energy_kind: StationEnergyKind;
+  status: StationAvailability;
+  status_observed_at: string | null;
+  power_kw: number | null;
+  pressure_bar: number | null;
+  fuel_grades: string[];
+  fuel_grade_match: FuelGradeMatch;
+  distance_to_route_km: number;
+  route_progress_percent: number;
+  source_url: string | null;
+}
+
+interface ApiStationLookupResult {
+  status: "matched" | "no_results";
+  energy_kind: StationEnergyKind;
+  corridor_km: number;
+  stations: ApiStationCandidateResult[];
+  warnings: string[];
+  source_name: string;
+  source_url: string;
+  retrieved_at: string;
+}
+
 function combinePath(
   outbound: RouteCoordinateResult[],
   inbound: RouteCoordinateResult[],
@@ -242,6 +304,61 @@ export async function lookupApiRoute(
     departure: payload.departure,
     destination: payload.destination,
     alternatives: payload.alternatives.map(mapAlternative),
+    sourceName: payload.source_name,
+    sourceUrl: payload.source_url,
+    retrievedAt: payload.retrieved_at,
+  };
+}
+
+export async function lookupApiStations(
+  baseUrl: string,
+  input: {
+    energyKind: StationEnergyKind;
+    routePath: RouteCoordinateResult[];
+    corridorKm?: number;
+    limit?: number;
+    fuelGrade?: string;
+  },
+): Promise<StationLookupResult> {
+  const payload = await plannerFetch<ApiStationLookupResult>(
+    `${baseUrl}/api/v1/planner/stations`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        energy_kind: input.energyKind,
+        route_path: input.routePath,
+        corridor_km: input.corridorKm ?? 5,
+        limit: input.limit ?? 5,
+        fuel_grade: input.fuelGrade,
+      }),
+    },
+    "충전·주유소 후보 조회 서버에 연결할 수 없습니다.",
+    "충전·주유소 후보를 확인하지 못했습니다.",
+  );
+
+  return {
+    status: payload.status,
+    energyKind: payload.energy_kind,
+    corridorKm: payload.corridor_km,
+    stations: payload.stations.map((station) => ({
+      stationId: station.station_id,
+      name: station.name,
+      address: station.address,
+      longitude: station.longitude,
+      latitude: station.latitude,
+      energyKind: station.energy_kind,
+      status: station.status,
+      statusObservedAt: station.status_observed_at,
+      powerKw: station.power_kw,
+      pressureBar: station.pressure_bar,
+      fuelGrades: station.fuel_grades,
+      fuelGradeMatch: station.fuel_grade_match,
+      distanceToRouteKm: station.distance_to_route_km,
+      routeProgressPercent: station.route_progress_percent,
+      sourceUrl: station.source_url,
+    })),
+    warnings: payload.warnings,
     sourceName: payload.source_name,
     sourceUrl: payload.source_url,
     retrievedAt: payload.retrieved_at,

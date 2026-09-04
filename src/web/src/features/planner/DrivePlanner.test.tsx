@@ -93,6 +93,77 @@ describe("DrivePlanner route lookup", () => {
     expect(result.getByText(/경로 거리는 NAVER Maps 조회 결과를 사용했습니다/)).toBeInTheDocument();
   });
 
+  it("shows ranked charging candidates for the selected real route", async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce(response(locationPayload("부산역", "부산 동구 중앙대로 206", 129.04, 35.11)))
+      .mockResolvedValueOnce(response(locationPayload("부산인력개발원", "부산 남구 용당동 546-2", 129.09, 35.12)))
+      .mockResolvedValueOnce(response(routePayload))
+      .mockResolvedValueOnce(response({ enabled: false, browser_client_id: null }))
+      .mockResolvedValueOnce(response({
+        status: "matched",
+        energy_kind: "electric",
+        corridor_km: 5,
+        stations: [{
+          station_id: "ev-1",
+          name: "영도 급속충전소",
+          address: "부산 영도구 태종로 1",
+          longitude: 129.05,
+          latitude: 35.1,
+          energy_kind: "electric",
+          status: "available",
+          status_observed_at: "2026-09-04T02:00:00+00:00",
+          power_kw: 200,
+          pressure_bar: null,
+          fuel_grades: [],
+          fuel_grade_match: "not-applicable",
+          distance_to_route_km: 0.4,
+          route_progress_percent: 37.5,
+          source_url: "https://example.com/ev-1",
+        }],
+        warnings: ["표시된 상태에는 충전 대기시간이 포함되지 않습니다."],
+        source_name: "공식 충전소 스냅샷",
+        source_url: "https://example.com/stations",
+        retrieved_at: "2026-09-04T02:00:00+00:00",
+      }));
+    render(<DrivePlanner vehicle={vehicle} apiBaseUrl="http://127.0.0.1:8000" />);
+    await confirmBothAddresses();
+    fireEvent.click(screen.getByRole("button", { name: "실제 경로 조회 후 계산" }));
+    expect(await screen.findByText("12.7 km · 약 21분 · 통행료 1,200원")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "경로 주변 충전소 찾기" }));
+
+    expect(await screen.findByText("영도 급속충전소")).toBeInTheDocument();
+    const candidates = within(screen.getByLabelText("선택 경로 주변 충전·주유소 후보"));
+    expect(candidates.getByText("경로선에서 직선 약 0.4 km")).toBeInTheDocument();
+    expect(candidates.getByText("전체 경로의 약 37.5% 지점")).toBeInTheDocument();
+    expect(candidates.getByText("최대 200 kW")).toBeInTheDocument();
+    expect(candidates.getByText("이용 가능")).toBeInTheDocument();
+    expect(within(screen.getByLabelText("로컬 플래너 계산 결과")).getByText("외부 데이터 일부 연동")).toBeInTheDocument();
+  });
+
+  it("separates an unconfigured station provider from route and calculation results", async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce(response(locationPayload("부산역", "부산 동구 중앙대로 206", 129.04, 35.11)))
+      .mockResolvedValueOnce(response(locationPayload("부산인력개발원", "부산 남구 용당동 546-2", 129.09, 35.12)))
+      .mockResolvedValueOnce(response(routePayload))
+      .mockResolvedValueOnce(response({ enabled: false, browser_client_id: null }))
+      .mockResolvedValueOnce(response({ error: {
+        code: "station_source_not_configured",
+        message: "충전·주유소 데이터 공급자가 설정되지 않았습니다.",
+      } }, false, 503));
+    render(<DrivePlanner vehicle={vehicle} apiBaseUrl="http://127.0.0.1:8000" />);
+    await confirmBothAddresses();
+    fireEvent.click(screen.getByRole("button", { name: "실제 경로 조회 후 계산" }));
+    expect(await screen.findByText("12.7 km · 약 21분 · 통행료 1,200원")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "경로 주변 충전소 찾기" }));
+
+    expect(await screen.findByText("충전·주유소 공급자 미설정")).toBeInTheDocument();
+    expect(screen.getByText(/기존 주행 계산과 경로 결과는 그대로 유지됩니다/)).toBeInTheDocument();
+    expect(within(screen.getByLabelText("로컬 플래너 계산 결과")).getByText("계산 완료")).toBeInTheDocument();
+    expect(screen.getByText("NAVER Maps · 실시간 빠른 길")).toBeInTheDocument();
+  });
+
   it("looks up both directions and sums a round trip", async () => {
     globalThis.fetch = vi.fn()
       .mockResolvedValueOnce(response(locationPayload("부산역", "부산 동구 중앙대로 206", 129.04, 35.11)))

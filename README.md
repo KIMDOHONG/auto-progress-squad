@@ -197,6 +197,8 @@ uv run fastapi dev
 - 선택 경로 주변 충전·주유소 후보 조회: `POST /api/v1/planner/stations`
 - 테스트: `uv run pytest`
 
+플래너 화면은 실제 경로를 선택한 뒤 로컬 정규화 스냅샷의 충전소·수소충전소·주유소 후보를 경로 반경별로 비교 표시합니다. 후보의 경로 근접 거리는 도로 우회거리가 아닌 경로선과의 직선거리이며, 실제 공급자 HTTP 어댑터가 설정되지 않은 경우에는 계산 결과를 유지한 채 `공급자 미설정` 상태를 별도로 안내합니다. 로컬 스냅샷은 `APS_STATION_CATALOG_PATH`로 지정하며 API 키나 원본 응답은 저장소에 포함하지 않습니다.
+
 현재 키워드 매뉴얼 검색의 재현 가능한 품질 기준은 [매뉴얼 검색 품질 평가 기준](docs/manual-search-evaluation.md)에 기록했습니다. 합성 한국어 질문 세트로 `Hit@3`와 `MRR`을 측정하며, 임베딩·벡터 검색 후보도 같은 조건에서 비교합니다.
 
 로컬 OpenVINO 임베딩 후보의 설치·실측 결과·라이선스·선택 근거는 [매뉴얼 임베딩 후보 비교](models/manual-embedding-candidates.md)를 참고하세요. 모델 가중치는 Git에 포함하지 않으며 `uv sync --locked --extra embedding`을 실행한 개발 환경의 Hugging Face 캐시에만 저장합니다.
