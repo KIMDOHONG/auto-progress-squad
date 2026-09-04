@@ -53,7 +53,9 @@ function EvResultView({ result }: { result: EvPlannerResult }) {
       ? "필수 충전은 아니지만 출발 전 100% 충전하는 선택으로 계산했습니다."
       : "현재 조건으로 최소 SoC를 지키며 도착할 수 있습니다."
     : result.needsEnRouteStop
-      ? `출발 전 100% 충전해도 부족하므로 경로 중 최소 ${result.enRouteChargeKwh} kWh를 추가 충전해야 합니다.`
+      ? result.chargeMode === "full"
+        ? `출발 전 100% 충전해도 부족하므로 경로 중 최소 ${result.enRouteChargeKwh} kWh를 추가 충전해야 합니다.`
+        : `현재 배터리 ${result.currentSocPercent}%로 출발하면 경로 중 최소 ${result.enRouteChargeKwh} kWh를 추가 충전해야 합니다.`
       : `출발 전에 최소 ${result.requiredChargeKwh} kWh를 충전해야 합니다.`;
 
   return (
@@ -260,7 +262,7 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
     setStationError(null);
   }
 
-  function calculateForDistance(distance: string) {
+  function calculateForDistance(distance: string, chargeModeOverride?: EnergyFillMode) {
     const calculation = electric
       ? calculateEvPlan({
         routeDistanceKm: Number(distance),
@@ -268,7 +270,7 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
         currentSocPercent: Number(battery),
         efficiencyKmPerKwh: Number(efficiency),
         minimumArrivalSocPercent: Number(minimumArrivalSoc),
-        chargeMode: evChargeMode,
+        chargeMode: chargeModeOverride ?? evChargeMode,
       })
       : hydrogen
         ? calculateRangePlan({
@@ -299,6 +301,13 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     calculateForDistance(routeDistance);
+  }
+
+  function selectEvChargeMode(mode: EnergyFillMode) {
+    setEvChargeMode(mode);
+    if (result?.kind === "electric") {
+      calculateForDistance(routeDistance, mode);
+    }
   }
 
   function clearRouteLookup() {
@@ -519,9 +528,9 @@ export function DrivePlanner({ vehicle, apiBaseUrl }: DrivePlannerProps) {
         {electric ? (
           <fieldset className="trip-mode-selector">
             <legend>충전 방식</legend>
-            <label><input type="radio" name="energy-fill-mode" value="minimum" checked={evChargeMode === "minimum"} onChange={() => setEvChargeMode("minimum")} />필요한 만큼 충전</label>
-            <label><input type="radio" name="energy-fill-mode" value="full" checked={evChargeMode === "full"} onChange={() => setEvChargeMode("full")} />출발 전 100% 충전</label>
-            <span>100% 충전으로도 부족하면 경로 중 추가로 필요한 양을 분리해 표시합니다.</span>
+            <label><input type="radio" name="energy-fill-mode" value="minimum" checked={evChargeMode === "minimum"} onChange={() => selectEvChargeMode("minimum")} />필요한 만큼 충전</label>
+            <label><input type="radio" name="energy-fill-mode" value="full" checked={evChargeMode === "full"} onChange={() => selectEvChargeMode("full")} />출발 전 100% 충전</label>
+            <span>필요한 만큼은 현재 SoC로 출발해 경로 중 필요한 충전량을, 100% 충전은 출발 전 충전량과 이후 추가량을 나눠 표시합니다.</span>
           </fieldset>
         ) : hydrogen ? (
           <fieldset className="trip-mode-selector">

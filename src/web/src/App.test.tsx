@@ -42,8 +42,8 @@ describe("vehicle-aware planner", () => {
     fireEvent.change(screen.getByLabelText(/경로 거리/), { target: { value: "250" } });
     fireEvent.click(screen.getByRole("button", { name: "직접 입력 거리로 계산" }));
     const result = within(screen.getByLabelText("로컬 플래너 계산 결과"));
-    expect(result.getByText("출발 전 충전 필요")).toBeInTheDocument();
-    expect(result.getByText("출발 전에 최소 22.1 kWh를 충전해야 합니다.")).toBeInTheDocument();
+    expect(result.getByText("경로 중 충전 필요")).toBeInTheDocument();
+    expect(result.getByText("현재 배터리 42%로 출발하면 경로 중 최소 22.1 kWh를 추가 충전해야 합니다.")).toBeInTheDocument();
   });
 
   it("shows planner validation errors without presenting a completed result", async () => {

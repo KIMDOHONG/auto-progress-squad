@@ -131,8 +131,10 @@ export function calculateEvPlan(input: EvPlannerInput): EvPlannerCalculation {
   const availableBatterySpaceKwh = input.batteryCapacityKwh - currentEnergyKwh;
   const departureChargeKwh = input.chargeMode === "full"
     ? availableBatterySpaceKwh
-    : Math.min(requiredChargeKwh, availableBatterySpaceKwh);
-  const enRouteChargeKwh = Math.max(0, requiredChargeKwh - departureChargeKwh);
+    : 0;
+  const enRouteChargeKwh = input.chargeMode === "minimum"
+    ? requiredChargeKwh
+    : Math.max(0, requiredChargeKwh - departureChargeKwh);
   const plannedChargeKwh = departureChargeKwh + enRouteChargeKwh;
   const arrivalEnergyAfterPlannedChargeKwh = currentEnergyKwh + plannedChargeKwh - tripEnergyKwh;
   const arrivalSocAfterPlannedChargePercent = arrivalEnergyAfterPlannedChargeKwh / input.batteryCapacityKwh * 100;

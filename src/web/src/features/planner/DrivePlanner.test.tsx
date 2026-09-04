@@ -326,6 +326,23 @@ describe("DrivePlanner route lookup", () => {
     expect(result.getByText("76.7%")).toBeInTheDocument();
   });
 
+  it("shows current-SoC en-route energy for minimum charging and updates when the mode changes", () => {
+    render(<DrivePlanner vehicle={vehicle} />);
+
+    fireEvent.change(screen.getByLabelText(/경로 거리/), { target: { value: "455" } });
+    fireEvent.click(screen.getByRole("button", { name: "직접 입력 거리로 계산" }));
+
+    const result = within(screen.getByLabelText("로컬 플래너 계산 결과"));
+    expect(result.getByText("현재 배터리 42%로 출발하면 경로 중 최소 62.3 kWh를 추가 충전해야 합니다.")).toBeInTheDocument();
+    expect(result.getByText(/출발 전 충전량/).parentElement).toHaveTextContent("0 kWh");
+    expect(result.getByText(/경로 중 추가량/).parentElement).toHaveTextContent("62.3 kWh");
+
+    fireEvent.click(screen.getByRole("radio", { name: "출발 전 100% 충전" }));
+    expect(result.getByText("출발 전 100% 충전해도 부족하므로 경로 중 최소 13.6 kWh를 추가 충전해야 합니다.")).toBeInTheDocument();
+    expect(result.getByText(/출발 전 충전량/).parentElement).toHaveTextContent("48.7 kWh");
+    expect(result.getByText(/경로 중 추가량/).parentElement).toHaveTextContent("13.6 kWh");
+  });
+
   it("fixes hydrogen to the full-fill principle instead of offering a selectable amount", () => {
     const hydrogenVehicle: VehicleProfile = {
       id: "test-hydrogen",
