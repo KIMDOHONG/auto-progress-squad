@@ -114,6 +114,8 @@ describe("DrivePlanner route lookup", () => {
           status_observed_at: "2026-09-04T02:00:00+00:00",
           power_kw: 200,
           pressure_bar: null,
+          queue_vehicle_count: null,
+          trailer_pressure_bar: null,
           fuel_grades: [],
           fuel_grade_match: "not-applicable",
           distance_to_route_km: 0.4,

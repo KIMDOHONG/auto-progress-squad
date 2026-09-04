@@ -13,6 +13,7 @@ from app.main import create_app
 from app.station_provider import (
     JsonStationProvider,
     KecoEvChargerProvider,
+    KpetroHydrogenStationProvider,
     StationCandidate,
     StationProviderError,
     StationProviderNotConfiguredError,
@@ -181,6 +182,45 @@ def test_station_search_endpoint_returns_ranked_candidates_and_warnings(
         "상태 조회시각이 없는 후보는 현재 이용 가능 여부를 직접 확인해야 합니다.",
     ]
     assert provider.requested_kinds == ["electric"]
+
+
+def test_station_search_endpoint_returns_hydrogen_realtime_details(
+    tmp_path: Path,
+) -> None:
+    station = StationCandidate(
+        station_id="h2-1",
+        name="테스트 수소충전소",
+        address="부산 테스트로 1",
+        longitude=129.05,
+        latitude=35.002,
+        energy_kind="hydrogen",
+        status="busy",
+        status_observed_at="2026-09-04T10:00:00+09:00",
+        pressure_bar=700,
+        queue_vehicle_count=2,
+        trailer_pressure_bar=132.4,
+    )
+    provider = FakeStationProvider((station,))
+    with TestClient(
+        create_app(settings(tmp_path), station_provider=provider)
+    ) as client:
+        response = client.post(
+            "/api/v1/planner/stations",
+            json={
+                "energy_kind": "hydrogen",
+                "route_path": [
+                    {"longitude": longitude, "latitude": latitude}
+                    for longitude, latitude in ROUTE_PATH
+                ],
+                "corridor_km": 2,
+            },
+        )
+
+    assert response.status_code == 200
+    result = response.json()["stations"][0]
+    assert result["pressure_bar"] == 700
+    assert result["queue_vehicle_count"] == 2
+    assert result["trailer_pressure_bar"] == 132.4
 
 
 def test_station_search_endpoint_distinguishes_unconfigured_empty_and_failed(
@@ -390,7 +430,139 @@ def test_keco_provider_reports_official_api_failure() -> None:
         provider.list_stations("electric")
 
 
-def test_keco_provider_is_created_from_settings_and_other_fuels_stay_unconfigured(
+def hydrogen_payload(items: list[dict[str, object]]) -> dict[str, object]:
+    return {
+        "header": {"resultCode": "00", "resultMsg": "NORMAL SERVICE."},
+        "body": {"items": {"item": items}, "totalCount": len(items)},
+    }
+
+
+def test_kpetro_provider_combines_operation_and_latest_realtime_data() -> None:
+    requested_paths: list[str] = []
+
+    def transport(url: str, timeout_seconds: float) -> dict[str, object]:
+        assert timeout_seconds == 4.0
+        parsed = urlparse(url)
+        requested_paths.append(parsed.path)
+        assert parse_qs(parsed.query)["serviceKey"] == ["abc+123/="]
+        if parsed.path.endswith("/operationInfo"):
+            return hydrogen_payload(
+                [
+                    {
+                        "chrstn_mno": "H2001",
+                        "chrstn_nm": "테스트 수소충전소",
+                        "road_nm_addr": "부산광역시 동구 중앙대로 200",
+                        "lotno_addr": "부산광역시 동구 초량동 1",
+                        "lon": "129.0414",
+                        "let": "35.1149",
+                        "chrgr_ty_cd": "02",
+                        "oper_yn": "Y",
+                        "del_at": "N",
+                    },
+                    {
+                        "chrstn_mno": "H2002",
+                        "chrstn_nm": "영업중지 충전소",
+                        "road_nm_addr": "부산광역시 동구 테스트로 2",
+                        "lon": "129.05",
+                        "let": "35.12",
+                        "chrgr_ty_cd": "01",
+                        "oper_yn": "N",
+                        "del_at": "N",
+                    },
+                    {"chrstn_mno": "deleted", "del_at": "Y"},
+                ]
+            )
+        return hydrogen_payload(
+            [
+                {
+                    "chrstn_mno": "H2001",
+                    "last_mdfcn_dt": "2026-09-04 09:00:00",
+                    "tt_pressr": 140.5,
+                    "wait_vhcle_alge": 0,
+                    "cnf_sttus_cd": "1",
+                    "oper_sttus_cd": "30",
+                    "pos_sttus_cd": "0",
+                },
+                {
+                    "chrstn_mno": "H2001",
+                    "last_mdfcn_dt": "2026-09-04 10:00:00",
+                    "tt_pressr": 132.4,
+                    "wait_vhcle_alge": 2,
+                    "cnf_sttus_cd": "3",
+                    "oper_sttus_cd": "30",
+                    "pos_sttus_cd": "0",
+                },
+            ]
+        )
+
+    provider = KpetroHydrogenStationProvider(
+        "abc%2B123%2F%3D",
+        timeout_seconds=4.0,
+        cache_ttl_seconds=300,
+        transport=transport,
+    )
+
+    first = provider.list_stations("hydrogen")
+    second = provider.list_stations("hydrogen")
+
+    assert second is first
+    assert requested_paths == [
+        "/B552532/h2nbiz_2/operationInfo",
+        "/B552532/h2nbiz_3/currentInfo",
+    ]
+    assert [station.station_id for station in first.stations] == ["H2001", "H2002"]
+    station = first.stations[0]
+    assert station.address == "부산광역시 동구 중앙대로 200"
+    assert station.status == "busy"
+    assert station.status_observed_at == "2026-09-04T10:00:00+09:00"
+    assert station.pressure_bar == 700
+    assert station.queue_vehicle_count == 2
+    assert station.trailer_pressure_bar == 132.4
+    assert first.stations[1].status == "unavailable"
+    assert first.stations[1].status_observed_at is None
+
+
+def test_kpetro_provider_maps_official_status_codes_conservatively() -> None:
+    operation = {"oper_yn": "Y"}
+
+    assert KpetroHydrogenStationProvider._status(operation, None) == "unknown"
+    assert KpetroHydrogenStationProvider._status(
+        operation,
+        {"oper_sttus_cd": "30", "pos_sttus_cd": "0", "cnf_sttus_cd": "1"},
+    ) == "available"
+    assert KpetroHydrogenStationProvider._status(
+        operation,
+        {"oper_sttus_cd": "30", "pos_sttus_cd": "0", "cnf_sttus_cd": "0"},
+    ) == "unknown"
+    assert KpetroHydrogenStationProvider._status(
+        operation,
+        {"oper_sttus_cd": "30", "pos_sttus_cd": "3", "cnf_sttus_cd": "1"},
+    ) == "unavailable"
+    assert KpetroHydrogenStationProvider._status(
+        operation,
+        {"oper_sttus_cd": "20", "pos_sttus_cd": "0", "cnf_sttus_cd": "1"},
+    ) == "unavailable"
+
+
+def test_kpetro_provider_rejects_unsupported_kind_and_api_failure() -> None:
+    provider = KpetroHydrogenStationProvider(
+        "test-key", transport=lambda url, timeout: hydrogen_payload([])
+    )
+    with pytest.raises(StationProviderNotConfiguredError):
+        provider.list_stations("electric")
+
+    failed = KpetroHydrogenStationProvider(
+        "test-key",
+        transport=lambda url, timeout: {
+            "header": {"resultCode": "30", "resultMsg": "SERVICE KEY ERROR"},
+            "body": {},
+        },
+    )
+    with pytest.raises(StationProviderError):
+        failed.list_stations("hydrogen")
+
+
+def test_official_providers_are_created_independently_from_settings(
     tmp_path: Path,
 ) -> None:
     configured = Settings(
@@ -399,13 +571,21 @@ def test_keco_provider_is_created_from_settings_and_other_fuels_stay_unconfigure
         manual_source_dir=tmp_path / "manuals",
         ev_charger_service_key="test-key",
         ev_charger_region_codes=("26",),
+        hydrogen_station_service_key="test-key",
     )
     with TestClient(create_app(configured)) as client:
-        assert isinstance(client.app.state.station_provider, KecoEvChargerProvider)
+        assert client.app.state.station_provider is None
+        assert isinstance(
+            client.app.state.station_providers["electric"], KecoEvChargerProvider
+        )
+        assert isinstance(
+            client.app.state.station_providers["hydrogen"],
+            KpetroHydrogenStationProvider,
+        )
         response = client.post(
             "/api/v1/planner/stations",
             json={
-                "energy_kind": "hydrogen",
+                "energy_kind": "fuel",
                 "route_path": [
                     {"longitude": longitude, "latitude": latitude}
                     for longitude, latitude in ROUTE_PATH
@@ -416,7 +596,7 @@ def test_keco_provider_is_created_from_settings_and_other_fuels_stay_unconfigure
     assert response.status_code == 503
     assert response.json()["error"] == {
         "code": "station_source_not_configured",
-        "message": "선택한 동력원의 충전·주유소 데이터 공급자가 설정되지 않았습니다.",
+        "message": "충전·주유소 데이터 공급자가 설정되지 않았습니다.",
         "retryable": False,
         "details": None,
     }

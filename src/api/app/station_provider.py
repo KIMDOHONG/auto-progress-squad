@@ -39,6 +39,8 @@ class StationCandidate:
     status_observed_at: str | None = None
     power_kw: float | None = None
     pressure_bar: int | None = None
+    queue_vehicle_count: int | None = None
+    trailer_pressure_bar: float | None = None
     fuel_grades: tuple[str, ...] = ()
     source_url: str | None = None
 
@@ -84,9 +86,9 @@ def _default_station_json_transport(
         with urlopen(request, timeout=timeout_seconds) as response:
             payload = json.load(response)
     except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError) as error:
-        raise StationProviderError("전기차 충전소 공식 API 요청에 실패했습니다.") from error
+        raise StationProviderError("충전·주유소 공식 API 요청에 실패했습니다.") from error
     if not isinstance(payload, Mapping):
-        raise StationProviderError("전기차 충전소 공식 API 응답 형식이 올바르지 않습니다.")
+        raise StationProviderError("충전·주유소 공식 API 응답 형식이 올바르지 않습니다.")
     return payload
 
 
@@ -120,6 +122,13 @@ def validate_station_source_result(
             raise StationProviderError("충전기 출력은 0보다 커야 합니다.")
         if station.pressure_bar is not None and station.pressure_bar <= 0:
             raise StationProviderError("수소 충전 압력은 0보다 커야 합니다.")
+        if station.queue_vehicle_count is not None and station.queue_vehicle_count < 0:
+            raise StationProviderError("수소 충전 대기 차량 수는 음수일 수 없습니다.")
+        if (
+            station.trailer_pressure_bar is not None
+            and station.trailer_pressure_bar < 0
+        ):
+            raise StationProviderError("수소 튜브트레일러 압력은 음수일 수 없습니다.")
 
 
 def _project_km(
@@ -513,6 +522,251 @@ class KecoEvChargerProvider:
         return result
 
 
+class KpetroHydrogenStationProvider:
+    """Combines K-Petro hydrogen station operation and real-time OpenAPIs."""
+
+    source_name = "한국석유관리원 수소충전소 운영·실시간정보"
+    source_url = "https://www.data.go.kr/data/15133332/openapi.do"
+    realtime_source_url = "https://www.data.go.kr/data/15133338/openapi.do"
+    _operation_endpoint = "https://apis.data.go.kr/B552532/h2nbiz_2/operationInfo"
+    _realtime_endpoint = "https://apis.data.go.kr/B552532/h2nbiz_3/currentInfo"
+    _seoul_timezone = timezone(timedelta(hours=9))
+    _pressure_by_charger_type = {
+        "01": 350,
+        "02": 700,
+        "03": 800,
+        "04": 300,
+    }
+
+    def __init__(
+        self,
+        service_key: str,
+        *,
+        timeout_seconds: float = 10.0,
+        cache_ttl_seconds: float = 300.0,
+        transport: StationJsonTransport | None = None,
+    ) -> None:
+        normalized_key = unquote(service_key.strip())
+        if not normalized_key:
+            raise ValueError("K-Petro hydrogen station service key is required")
+        if timeout_seconds <= 0:
+            raise ValueError("K-Petro hydrogen station timeout must be greater than zero")
+        if cache_ttl_seconds < 0:
+            raise ValueError("K-Petro hydrogen station cache TTL must not be negative")
+        self._service_key = normalized_key
+        self._timeout_seconds = timeout_seconds
+        self._cache_ttl_seconds = cache_ttl_seconds
+        self._transport = transport or _default_station_json_transport
+        self._cached_result: StationSourceResult | None = None
+        self._cache_expires_at = 0.0
+
+    def _request(self, endpoint: str) -> Mapping[str, Any]:
+        params = {"serviceKey": self._service_key}
+        return self._transport(
+            f"{endpoint}?{urlencode(params)}", self._timeout_seconds
+        )
+
+    @staticmethod
+    def _items(payload: Mapping[str, Any], label: str) -> list[Mapping[str, Any]]:
+        response = payload.get("response")
+        root = response if isinstance(response, Mapping) else payload
+        header = root.get("header")
+        header_mapping = header if isinstance(header, Mapping) else root
+        result_code = str(header_mapping.get("resultCode", "")).strip()
+        if result_code not in {"0", "00", "0000"}:
+            raise StationProviderError(
+                f"수소충전소 {label} 공식 API가 요청을 처리하지 못했습니다."
+            )
+
+        body = root.get("body")
+        body_mapping = body if isinstance(body, Mapping) else root
+        items_container = body_mapping.get("items")
+        if items_container in (None, ""):
+            return []
+        raw_items = (
+            items_container.get("item", [])
+            if isinstance(items_container, Mapping)
+            else items_container
+        )
+        if isinstance(raw_items, Mapping):
+            raw_items = [raw_items]
+        if not isinstance(raw_items, list) or any(
+            not isinstance(item, Mapping) for item in raw_items
+        ):
+            raise StationProviderError(
+                f"수소충전소 {label} 공식 API 목록 형식이 올바르지 않습니다."
+            )
+        return [item for item in raw_items if isinstance(item, Mapping)]
+
+    @classmethod
+    def _parse_observed_at(cls, raw_value: Any) -> str | None:
+        value = str(raw_value or "").strip()
+        if not value:
+            return None
+        normalized = value.replace("Z", "+00:00")
+        try:
+            observed = datetime.fromisoformat(normalized)
+        except ValueError:
+            observed = None
+        if observed is None:
+            for pattern in ("%Y%m%d%H%M%S", "%Y-%m-%d %H:%M:%S"):
+                try:
+                    observed = datetime.strptime(value, pattern)
+                    break
+                except ValueError:
+                    continue
+        if observed is None:
+            return None
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=cls._seoul_timezone)
+        return observed.isoformat()
+
+    @staticmethod
+    def _non_negative_int(raw_value: Any) -> int | None:
+        if raw_value in (None, ""):
+            return None
+        try:
+            value = int(float(raw_value))
+        except (TypeError, ValueError):
+            return None
+        return value if value >= 0 else None
+
+    @staticmethod
+    def _non_negative_float(raw_value: Any) -> float | None:
+        if raw_value in (None, ""):
+            return None
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            return None
+        return value if math.isfinite(value) and value >= 0 else None
+
+    @classmethod
+    def _status(
+        cls,
+        operation: Mapping[str, Any],
+        realtime: Mapping[str, Any] | None,
+    ) -> StationStatus:
+        if str(operation.get("oper_yn", "")).strip().upper() == "N":
+            return "unavailable"
+        if realtime is None:
+            return "unknown"
+
+        operation_status = str(realtime.get("oper_sttus_cd", "")).strip()
+        pos_status = str(realtime.get("pos_sttus_cd", "")).strip()
+        congestion_status = str(realtime.get("cnf_sttus_cd", "")).strip()
+        if operation_status in {"10", "20"} or pos_status in {"1", "2", "3", "9"}:
+            return "unavailable"
+        if operation_status != "30" or pos_status not in {"", "0"}:
+            return "unknown"
+        queue_count = cls._non_negative_int(realtime.get("wait_vhcle_alge"))
+        if congestion_status == "3" or (queue_count is not None and queue_count > 0):
+            return "busy"
+        if congestion_status in {"1", "2"}:
+            return "available"
+        return "unknown"
+
+    @classmethod
+    def _latest_realtime_by_station(
+        cls, items: Sequence[Mapping[str, Any]]
+    ) -> dict[str, Mapping[str, Any]]:
+        latest: dict[str, Mapping[str, Any]] = {}
+        for item in items:
+            station_id = str(item.get("chrstn_mno", "")).strip()
+            if not station_id:
+                continue
+            existing = latest.get(station_id)
+            if existing is None:
+                latest[station_id] = item
+                continue
+            observed = cls._parse_observed_at(item.get("last_mdfcn_dt")) or ""
+            existing_observed = (
+                cls._parse_observed_at(existing.get("last_mdfcn_dt")) or ""
+            )
+            if observed > existing_observed:
+                latest[station_id] = item
+        return latest
+
+    @classmethod
+    def _normalize_stations(
+        cls,
+        operation_items: Sequence[Mapping[str, Any]],
+        realtime_items: Sequence[Mapping[str, Any]],
+    ) -> tuple[StationCandidate, ...]:
+        realtime_by_station = cls._latest_realtime_by_station(realtime_items)
+        stations: list[StationCandidate] = []
+        for operation in operation_items:
+            station_id = str(operation.get("chrstn_mno", "")).strip()
+            if not station_id or str(operation.get("del_at", "N")).strip().upper() == "Y":
+                continue
+            name = str(operation.get("chrstn_nm", "")).strip()
+            address = str(
+                operation.get("road_nm_addr") or operation.get("lotno_addr") or ""
+            ).strip()
+            try:
+                longitude = float(operation.get("lon"))
+                latitude = float(operation.get("let"))
+            except (TypeError, ValueError):
+                continue
+            if not name or not address or not _finite_coordinate(longitude, latitude):
+                continue
+
+            realtime = realtime_by_station.get(station_id)
+            charger_type = str(operation.get("chrgr_ty_cd", "")).strip()
+            stations.append(
+                StationCandidate(
+                    station_id=station_id,
+                    name=name,
+                    address=address,
+                    longitude=longitude,
+                    latitude=latitude,
+                    energy_kind="hydrogen",
+                    status=cls._status(operation, realtime),
+                    status_observed_at=(
+                        cls._parse_observed_at(realtime.get("last_mdfcn_dt"))
+                        if realtime is not None
+                        else None
+                    ),
+                    pressure_bar=cls._pressure_by_charger_type.get(charger_type),
+                    queue_vehicle_count=(
+                        cls._non_negative_int(realtime.get("wait_vhcle_alge"))
+                        if realtime is not None
+                        else None
+                    ),
+                    trailer_pressure_bar=(
+                        cls._non_negative_float(realtime.get("tt_pressr"))
+                        if realtime is not None
+                        else None
+                    ),
+                )
+            )
+        return tuple(stations)
+
+    def list_stations(self, energy_kind: EnergyKind) -> StationSourceResult:
+        if energy_kind != "hydrogen":
+            raise StationProviderNotConfiguredError(
+                "선택한 동력원의 충전·주유소 공급자가 설정되지 않았습니다."
+            )
+        now = time.monotonic()
+        if self._cached_result is not None and now < self._cache_expires_at:
+            return self._cached_result
+
+        operation_items = self._items(
+            self._request(self._operation_endpoint), "운영정보"
+        )
+        realtime_items = self._items(
+            self._request(self._realtime_endpoint), "실시간정보"
+        )
+        result = StationSourceResult(
+            stations=self._normalize_stations(operation_items, realtime_items),
+            retrieved_at=datetime.now(UTC).isoformat(),
+        )
+        validate_station_source_result(self.source_name, self.source_url, result)
+        self._cached_result = result
+        self._cache_expires_at = now + self._cache_ttl_seconds
+        return result
+
+
 class JsonStationProvider:
     """Reads a normalized, source-attributed station snapshot from a local file."""
 
@@ -564,6 +818,16 @@ class JsonStationProvider:
                 ),
                 power_kw=float(item["power_kw"]) if item.get("power_kw") is not None else None,
                 pressure_bar=int(item["pressure_bar"]) if item.get("pressure_bar") is not None else None,
+                queue_vehicle_count=(
+                    int(item["queue_vehicle_count"])
+                    if item.get("queue_vehicle_count") is not None
+                    else None
+                ),
+                trailer_pressure_bar=(
+                    float(item["trailer_pressure_bar"])
+                    if item.get("trailer_pressure_bar") is not None
+                    else None
+                ),
                 fuel_grades=tuple(str(grade).strip() for grade in fuel_grades_payload),
                 source_url=str(item["source_url"]).strip() if item.get("source_url") else None,
             )

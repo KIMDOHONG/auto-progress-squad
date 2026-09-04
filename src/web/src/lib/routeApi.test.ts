@@ -130,24 +130,26 @@ describe("route API", () => {
       status: 200,
       json: async () => ({
         status: "matched",
-        energy_kind: "electric",
+        energy_kind: "hydrogen",
         corridor_km: 5,
         stations: [{
-          station_id: "ev-1",
-          name: "테스트 급속충전소",
+          station_id: "h2-1",
+          name: "테스트 수소충전소",
           address: "부산 영도구 테스트로 1",
           longitude: 129.05,
           latitude: 35.1,
-          energy_kind: "electric",
-          status: "available",
+          energy_kind: "hydrogen",
+          status: "busy",
           status_observed_at: "2026-09-04T02:00:00+00:00",
-          power_kw: 200,
-          pressure_bar: null,
+          power_kw: null,
+          pressure_bar: 700,
+          queue_vehicle_count: 2,
+          trailer_pressure_bar: 132.4,
           fuel_grades: [],
           fuel_grade_match: "not-applicable",
           distance_to_route_km: 0.4,
           route_progress_percent: 37.5,
-          source_url: "https://example.com/stations/ev-1",
+          source_url: "https://example.com/stations/h2-1",
         }],
         warnings: ["대기시간은 포함되지 않습니다."],
         source_name: "공식 충전소 스냅샷",
@@ -158,7 +160,7 @@ describe("route API", () => {
     const routePath = [{ longitude: 129.04, latitude: 35.11 }, { longitude: 129.09, latitude: 35.12 }];
 
     const result = await lookupApiStations("http://127.0.0.1:8000", {
-      energyKind: "electric",
+      energyKind: "hydrogen",
       routePath,
       corridorKm: 5,
       limit: 5,
@@ -166,8 +168,10 @@ describe("route API", () => {
 
     expect(result.status).toBe("matched");
     expect(result.stations[0]).toEqual(expect.objectContaining({
-      stationId: "ev-1",
-      powerKw: 200,
+      stationId: "h2-1",
+      pressureBar: 700,
+      queueVehicleCount: 2,
+      trailerPressureBar: 132.4,
       distanceToRouteKm: 0.4,
       routeProgressPercent: 37.5,
     }));
@@ -176,7 +180,7 @@ describe("route API", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
-          energy_kind: "electric",
+          energy_kind: "hydrogen",
           route_path: routePath,
           corridor_km: 5,
           limit: 5,

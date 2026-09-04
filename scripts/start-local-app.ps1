@@ -72,14 +72,17 @@ Assert-PortAvailable -Port $WebPort -ServiceName "Vite"
 $originalClientId = [Environment]::GetEnvironmentVariable("APS_NAVER_MAPS_CLIENT_ID", "Process")
 $originalClientSecret = [Environment]::GetEnvironmentVariable("APS_NAVER_MAPS_CLIENT_SECRET", "Process")
 $originalEvChargerServiceKey = [Environment]::GetEnvironmentVariable("APS_EV_CHARGER_SERVICE_KEY", "Process")
+$originalHydrogenStationServiceKey = [Environment]::GetEnvironmentVariable("APS_HYDROGEN_STATION_SERVICE_KEY", "Process")
 $originalApiBaseUrl = [Environment]::GetEnvironmentVariable("VITE_API_BASE_URL", "Process")
 $originalCorsOrigins = [Environment]::GetEnvironmentVariable("APS_CORS_ORIGINS", "Process")
 $clientIdValue = $originalClientId
 $clientSecretValue = $originalClientSecret
 $evChargerServiceKeyValue = $originalEvChargerServiceKey
+$hydrogenStationServiceKeyValue = $originalHydrogenStationServiceKey
 $clientIdPointer = [IntPtr]::Zero
 $clientSecretPointer = [IntPtr]::Zero
 $evChargerServiceKeyPointer = [IntPtr]::Zero
+$hydrogenStationServiceKeyPointer = [IntPtr]::Zero
 $apiProcess = $null
 $webProcess = $null
 
@@ -104,6 +107,13 @@ try {
         $evChargerServiceKeyValue = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($evChargerServiceKeyPointer)
     }
 
+    if ([string]::IsNullOrWhiteSpace($hydrogenStationServiceKeyValue)) {
+        Write-Host "수소충전소 운영정보와 실시간정보 활용신청이 모두 승인된 경우에만 입력해 주세요."
+        $hydrogenStationServiceKeySecure = Read-Host "수소충전소 공공데이터 서비스키를 붙여 넣거나 아직 없으면 Enter" -AsSecureString
+        $hydrogenStationServiceKeyPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($hydrogenStationServiceKeySecure)
+        $hydrogenStationServiceKeyValue = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($hydrogenStationServiceKeyPointer)
+    }
+
     $env:APS_NAVER_MAPS_CLIENT_ID = $clientIdValue
     $env:APS_NAVER_MAPS_CLIENT_SECRET = $clientSecretValue
     if ([string]::IsNullOrWhiteSpace($evChargerServiceKeyValue)) {
@@ -111,6 +121,12 @@ try {
     }
     else {
         $env:APS_EV_CHARGER_SERVICE_KEY = $evChargerServiceKeyValue
+    }
+    if ([string]::IsNullOrWhiteSpace($hydrogenStationServiceKeyValue)) {
+        Remove-Item Env:APS_HYDROGEN_STATION_SERVICE_KEY -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:APS_HYDROGEN_STATION_SERVICE_KEY = $hydrogenStationServiceKeyValue
     }
     $env:VITE_API_BASE_URL = "http://127.0.0.1:$ApiPort"
     $configuredCorsOrigins = @(
@@ -140,9 +156,11 @@ try {
     $clientIdValue = $null
     $clientSecretValue = $null
     $evChargerServiceKeyValue = $null
+    $hydrogenStationServiceKeyValue = $null
     if ($originalClientId) { $env:APS_NAVER_MAPS_CLIENT_ID = $originalClientId } else { Remove-Item Env:APS_NAVER_MAPS_CLIENT_ID -ErrorAction SilentlyContinue }
     if ($originalClientSecret) { $env:APS_NAVER_MAPS_CLIENT_SECRET = $originalClientSecret } else { Remove-Item Env:APS_NAVER_MAPS_CLIENT_SECRET -ErrorAction SilentlyContinue }
     if ($originalEvChargerServiceKey) { $env:APS_EV_CHARGER_SERVICE_KEY = $originalEvChargerServiceKey } else { Remove-Item Env:APS_EV_CHARGER_SERVICE_KEY -ErrorAction SilentlyContinue }
+    if ($originalHydrogenStationServiceKey) { $env:APS_HYDROGEN_STATION_SERVICE_KEY = $originalHydrogenStationServiceKey } else { Remove-Item Env:APS_HYDROGEN_STATION_SERVICE_KEY -ErrorAction SilentlyContinue }
     if ($originalCorsOrigins) { $env:APS_CORS_ORIGINS = $originalCorsOrigins } else { Remove-Item Env:APS_CORS_ORIGINS -ErrorAction SilentlyContinue }
 
     $webUrl = "http://127.0.0.1:$WebPort/auto-progress-squad/"
@@ -172,9 +190,11 @@ finally {
     if ($clientIdPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($clientIdPointer) }
     if ($clientSecretPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($clientSecretPointer) }
     if ($evChargerServiceKeyPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($evChargerServiceKeyPointer) }
+    if ($hydrogenStationServiceKeyPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($hydrogenStationServiceKeyPointer) }
     if ($originalClientId) { $env:APS_NAVER_MAPS_CLIENT_ID = $originalClientId } else { Remove-Item Env:APS_NAVER_MAPS_CLIENT_ID -ErrorAction SilentlyContinue }
     if ($originalClientSecret) { $env:APS_NAVER_MAPS_CLIENT_SECRET = $originalClientSecret } else { Remove-Item Env:APS_NAVER_MAPS_CLIENT_SECRET -ErrorAction SilentlyContinue }
     if ($originalEvChargerServiceKey) { $env:APS_EV_CHARGER_SERVICE_KEY = $originalEvChargerServiceKey } else { Remove-Item Env:APS_EV_CHARGER_SERVICE_KEY -ErrorAction SilentlyContinue }
+    if ($originalHydrogenStationServiceKey) { $env:APS_HYDROGEN_STATION_SERVICE_KEY = $originalHydrogenStationServiceKey } else { Remove-Item Env:APS_HYDROGEN_STATION_SERVICE_KEY -ErrorAction SilentlyContinue }
     if ($originalApiBaseUrl) { $env:VITE_API_BASE_URL = $originalApiBaseUrl } else { Remove-Item Env:VITE_API_BASE_URL -ErrorAction SilentlyContinue }
     if ($originalCorsOrigins) { $env:APS_CORS_ORIGINS = $originalCorsOrigins } else { Remove-Item Env:APS_CORS_ORIGINS -ErrorAction SilentlyContinue }
 }

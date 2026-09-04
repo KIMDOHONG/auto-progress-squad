@@ -318,6 +318,9 @@ def search_planner_stations(
 ) -> StationSearchResponse:
     provider = getattr(request.app.state, "station_provider", None)
     if provider is None:
+        providers = getattr(request.app.state, "station_providers", {})
+        provider = providers.get(payload.energy_kind)
+    if provider is None:
         raise ServiceNotConfiguredError(
             code="station_source_not_configured",
             message="충전·주유소 데이터 공급자가 설정되지 않았습니다.",
@@ -375,6 +378,8 @@ def search_planner_stations(
                 status_observed_at=candidate.station.status_observed_at,
                 power_kw=candidate.station.power_kw,
                 pressure_bar=candidate.station.pressure_bar,
+                queue_vehicle_count=candidate.station.queue_vehicle_count,
+                trailer_pressure_bar=candidate.station.trailer_pressure_bar,
                 fuel_grades=list(candidate.station.fuel_grades),
                 fuel_grade_match=candidate.fuel_grade_match,
                 distance_to_route_km=candidate.distance_to_route_km,

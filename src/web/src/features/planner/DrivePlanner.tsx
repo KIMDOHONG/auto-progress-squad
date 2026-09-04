@@ -174,6 +174,10 @@ function StationCandidateCard({ station, fuelLabel }: { station: StationCandidat
   const specifications = [
     station.powerKw !== null ? `최대 ${station.powerKw} kW` : null,
     station.pressureBar !== null ? `${station.pressureBar} bar` : null,
+    station.queueVehicleCount !== null ? `대기 ${station.queueVehicleCount}대` : null,
+    station.trailerPressureBar !== null
+      ? `튜브트레일러 ${station.trailerPressureBar} bar`
+      : null,
     station.fuelGradeMatch === "confirmed" ? `${fuelLabel} 취급 확인` : null,
     station.fuelGradeMatch === "unknown" ? `${fuelLabel} 취급 미확인` : null,
   ].filter(Boolean);
@@ -200,7 +204,7 @@ function ExternalDataNotice({ kind, routeLookup, stationsIncluded }: { kind: Pla
     ? kind === "electric"
       ? "실시간 대기·충전곡선·예상 충전시간"
       : kind === "hydrogen"
-        ? "실시간 대기·저장 탱크 잔량·실제 충전 가능량"
+        ? "예상 대기시간·실제 충전 가능량"
         : "실시간 가격·도로 우회거리"
     : kind === "electric"
       ? "충전소 위치·실시간 상태·충전곡선·충전시간"

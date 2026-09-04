@@ -81,6 +81,8 @@ export interface StationCandidateResult {
   statusObservedAt: string | null;
   powerKw: number | null;
   pressureBar: number | null;
+  queueVehicleCount: number | null;
+  trailerPressureBar: number | null;
   fuelGrades: string[];
   fuelGradeMatch: FuelGradeMatch;
   distanceToRouteKm: number;
@@ -110,6 +112,8 @@ interface ApiStationCandidateResult {
   status_observed_at: string | null;
   power_kw: number | null;
   pressure_bar: number | null;
+  queue_vehicle_count: number | null;
+  trailer_pressure_bar: number | null;
   fuel_grades: string[];
   fuel_grade_match: FuelGradeMatch;
   distance_to_route_km: number;
@@ -352,6 +356,8 @@ export async function lookupApiStations(
       statusObservedAt: station.status_observed_at,
       powerKw: station.power_kw,
       pressureBar: station.pressure_bar,
+      queueVehicleCount: station.queue_vehicle_count,
+      trailerPressureBar: station.trailer_pressure_bar,
       fuelGrades: station.fuel_grades,
       fuelGradeMatch: station.fuel_grade_match,
       distanceToRouteKm: station.distance_to_route_km,

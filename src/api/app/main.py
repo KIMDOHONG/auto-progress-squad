@@ -13,7 +13,12 @@ from .manual_embedding_search import EmbeddingManualSearcher
 from .manual_grounded_answer import OpenVINOGroundedAnswerGenerator
 from .recall_provider import RecallProvider
 from .route_provider import NaverMapsRouteProvider, RouteProvider
-from .station_provider import JsonStationProvider, KecoEvChargerProvider, StationProvider
+from .station_provider import (
+    JsonStationProvider,
+    KecoEvChargerProvider,
+    KpetroHydrogenStationProvider,
+    StationProvider,
+)
 from .routes import router
 
 
@@ -41,11 +46,15 @@ def create_app(
             and resolved_settings.naver_maps_client_secret
             else None
         )
-        app.state.station_provider = station_provider or (
-            JsonStationProvider(resolved_settings.station_catalog_path)
-            if resolved_settings.station_catalog_path
-            else (
-                KecoEvChargerProvider(
+        app.state.station_provider = station_provider
+        app.state.station_providers = {}
+        if station_provider is None and resolved_settings.station_catalog_path:
+            app.state.station_provider = JsonStationProvider(
+                resolved_settings.station_catalog_path
+            )
+        elif station_provider is None:
+            if resolved_settings.ev_charger_service_key:
+                app.state.station_providers["electric"] = KecoEvChargerProvider(
                     resolved_settings.ev_charger_service_key,
                     timeout_seconds=resolved_settings.ev_charger_timeout_seconds,
                     cache_ttl_seconds=resolved_settings.ev_charger_cache_ttl_seconds,
@@ -53,10 +62,18 @@ def create_app(
                     max_pages=resolved_settings.ev_charger_max_pages,
                     region_codes=resolved_settings.ev_charger_region_codes,
                 )
-                if resolved_settings.ev_charger_service_key
-                else None
-            )
-        )
+            if resolved_settings.hydrogen_station_service_key:
+                app.state.station_providers["hydrogen"] = (
+                    KpetroHydrogenStationProvider(
+                        resolved_settings.hydrogen_station_service_key,
+                        timeout_seconds=(
+                            resolved_settings.hydrogen_station_timeout_seconds
+                        ),
+                        cache_ttl_seconds=(
+                            resolved_settings.hydrogen_station_cache_ttl_seconds
+                        ),
+                    )
+                )
         app.state.manual_embedding_search = (
             EmbeddingManualSearcher(
                 model_name=resolved_settings.manual_embedding_model,

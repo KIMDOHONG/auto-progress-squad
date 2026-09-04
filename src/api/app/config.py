@@ -42,6 +42,9 @@ class Settings:
     ev_charger_page_size: int = 9_999
     ev_charger_max_pages: int = 100
     ev_charger_region_codes: tuple[str, ...] = ()
+    hydrogen_station_service_key: str | None = None
+    hydrogen_station_timeout_seconds: float = 10.0
+    hydrogen_station_cache_ttl_seconds: float = 300.0
 
     def __post_init__(self) -> None:
         if self.manual_search_mode not in {"keyword", "embedding"}:
@@ -77,6 +80,14 @@ class Settings:
             for code in self.ev_charger_region_codes
         ):
             raise ValueError("APS_EV_CHARGER_REGION_CODES must contain two-digit codes")
+        if self.hydrogen_station_timeout_seconds <= 0:
+            raise ValueError(
+                "APS_HYDROGEN_STATION_TIMEOUT_SECONDS must be greater than zero"
+            )
+        if self.hydrogen_station_cache_ttl_seconds < 0:
+            raise ValueError(
+                "APS_HYDROGEN_STATION_CACHE_TTL_SECONDS must not be negative"
+            )
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -170,5 +181,14 @@ class Settings:
                     for code in configured_ev_regions.split(",")
                     if code.strip()
                 )
+            ),
+            hydrogen_station_service_key=(
+                os.getenv("APS_HYDROGEN_STATION_SERVICE_KEY", "").strip() or None
+            ),
+            hydrogen_station_timeout_seconds=float(
+                os.getenv("APS_HYDROGEN_STATION_TIMEOUT_SECONDS", "10")
+            ),
+            hydrogen_station_cache_ttl_seconds=float(
+                os.getenv("APS_HYDROGEN_STATION_CACHE_TTL_SECONDS", "300")
             ),
         )

@@ -373,6 +373,8 @@ class StationCandidateResponse(BaseModel):
     status_observed_at: str | None
     power_kw: float | None
     pressure_bar: int | None
+    queue_vehicle_count: int | None
+    trailer_pressure_bar: float | None
     fuel_grades: list[str]
     fuel_grade_match: Literal["confirmed", "unknown", "not-applicable"]
     distance_to_route_km: float
