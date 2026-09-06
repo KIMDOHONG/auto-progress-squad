@@ -445,7 +445,7 @@ def test_kpetro_provider_combines_operation_and_latest_realtime_data() -> None:
         parsed = urlparse(url)
         requested_paths.append(parsed.path)
         assert parse_qs(parsed.query)["serviceKey"] == ["abc+123/="]
-        if parsed.path.endswith("/operationInfo"):
+        if parsed.path.endswith("/operationInfo.do"):
             return hydrogen_payload(
                 [
                     {
@@ -507,8 +507,8 @@ def test_kpetro_provider_combines_operation_and_latest_realtime_data() -> None:
 
     assert second is first
     assert requested_paths == [
-        "/B552532/h2nbiz_2/operationInfo",
-        "/B552532/h2nbiz_3/currentInfo",
+        "/api/openData/chrstnList/operationInfo.do",
+        "/api/openData/chrstnList/currentInfo.do",
     ]
     assert [station.station_id for station in first.stations] == ["H2001", "H2002"]
     station = first.stations[0]
@@ -558,8 +558,55 @@ def test_kpetro_provider_rejects_unsupported_kind_and_api_failure() -> None:
             "body": {},
         },
     )
-    with pytest.raises(StationProviderError):
+    with pytest.raises(StationProviderError, match=r"resultCode=30"):
         failed.list_stations("hydrogen")
+
+
+def test_kpetro_provider_falls_back_when_direct_endpoint_rejects_request() -> None:
+    requested_paths: list[str] = []
+
+    def transport(url: str, timeout_seconds: float) -> dict[str, object]:
+        del timeout_seconds
+        path = urlparse(url).path
+        requested_paths.append(path)
+        if path.startswith("/api/openData/"):
+            return {
+                "header": {"resultCode": "01", "resultMsg": "INVALID KEY"},
+                "body": {},
+            }
+        return hydrogen_payload([])
+
+    provider = KpetroHydrogenStationProvider("test-key", transport=transport)
+
+    assert provider.list_stations("hydrogen").stations == ()
+    assert requested_paths == [
+        "/api/openData/chrstnList/operationInfo.do",
+        "/B552532/h2nbiz_2/operationInfo",
+        "/api/openData/chrstnList/currentInfo.do",
+        "/B552532/h2nbiz_3/currentInfo",
+    ]
+
+
+def test_kpetro_provider_falls_back_to_public_data_gateway() -> None:
+    requested_paths: list[str] = []
+
+    def transport(url: str, timeout_seconds: float) -> dict[str, object]:
+        del timeout_seconds
+        path = urlparse(url).path
+        requested_paths.append(path)
+        if path.startswith("/api/openData/"):
+            raise StationProviderError("direct endpoint unavailable")
+        return hydrogen_payload([])
+
+    provider = KpetroHydrogenStationProvider("test-key", transport=transport)
+
+    assert provider.list_stations("hydrogen").stations == ()
+    assert requested_paths == [
+        "/api/openData/chrstnList/operationInfo.do",
+        "/B552532/h2nbiz_2/operationInfo",
+        "/api/openData/chrstnList/currentInfo.do",
+        "/B552532/h2nbiz_3/currentInfo",
+    ]
 
 
 def test_official_providers_are_created_independently_from_settings(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -83,6 +84,7 @@ from .schemas import (
 
 
 router = APIRouter(prefix="/api/v1")
+logger = logging.getLogger(__name__)
 
 
 def vehicle_from_row(row: sqlite3.Row) -> VehicleProfile:
@@ -148,6 +150,7 @@ def health(request: Request) -> HealthResponse:
     responses={422: {"model": ApiErrorResponse}, 503: {"model": ApiErrorResponse}},
     tags=["planner"],
 )
+
 def resolve_planner_location(
     request: Request, payload: RouteLocationResolveRequest
 ) -> RouteLocationLookupResponse:
@@ -346,7 +349,8 @@ def search_planner_stations(
             code="station_source_not_configured",
             message="선택한 동력원의 충전·주유소 데이터 공급자가 설정되지 않았습니다.",
         ) from None
-    except StationProviderError:
+    except StationProviderError as error:
+        logger.warning("Station provider lookup failed: %s", error)
         raise ApiError(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "station_source_unavailable",

@@ -528,8 +528,14 @@ class KpetroHydrogenStationProvider:
     source_name = "한국석유관리원 수소충전소 운영·실시간정보"
     source_url = "https://www.data.go.kr/data/15133332/openapi.do"
     realtime_source_url = "https://www.data.go.kr/data/15133338/openapi.do"
-    _operation_endpoint = "https://apis.data.go.kr/B552532/h2nbiz_2/operationInfo"
-    _realtime_endpoint = "https://apis.data.go.kr/B552532/h2nbiz_3/currentInfo"
+    _operation_endpoints = (
+        "https://www.h2nbiz.or.kr/api/openData/chrstnList/operationInfo.do",
+        "https://apis.data.go.kr/B552532/h2nbiz_2/operationInfo",
+    )
+    _realtime_endpoints = (
+        "https://www.h2nbiz.or.kr/api/openData/chrstnList/currentInfo.do",
+        "https://apis.data.go.kr/B552532/h2nbiz_3/currentInfo",
+    )
     _seoul_timezone = timezone(timedelta(hours=9))
     _pressure_by_charger_type = {
         "01": 350,
@@ -566,6 +572,21 @@ class KpetroHydrogenStationProvider:
             f"{endpoint}?{urlencode(params)}", self._timeout_seconds
         )
 
+    def _items_from_available_endpoint(
+        self, endpoints: Sequence[str], label: str
+    ) -> list[Mapping[str, Any]]:
+        first_error: StationProviderError | None = None
+        for endpoint in endpoints:
+            try:
+                return self._items(self._request(endpoint), label)
+            except StationProviderError as error:
+                if first_error is None:
+                    first_error = error
+                continue
+        if first_error is not None:
+            raise first_error
+        raise StationProviderError(f"수소충전소 {label} 공식 API 연결에 실패했습니다.")
+
     @staticmethod
     def _items(payload: Mapping[str, Any], label: str) -> list[Mapping[str, Any]]:
         response = payload.get("response")
@@ -574,8 +595,12 @@ class KpetroHydrogenStationProvider:
         header_mapping = header if isinstance(header, Mapping) else root
         result_code = str(header_mapping.get("resultCode", "")).strip()
         if result_code not in {"0", "00", "0000"}:
+            safe_result_code = (
+                "".join(character for character in result_code if character.isalnum())[:16]
+                or "missing"
+            )
             raise StationProviderError(
-                f"수소충전소 {label} 공식 API가 요청을 처리하지 못했습니다."
+                f"수소충전소 {label} 공식 API 오류(resultCode={safe_result_code})."
             )
 
         body = root.get("body")
@@ -751,11 +776,11 @@ class KpetroHydrogenStationProvider:
         if self._cached_result is not None and now < self._cache_expires_at:
             return self._cached_result
 
-        operation_items = self._items(
-            self._request(self._operation_endpoint), "운영정보"
+        operation_items = self._items_from_available_endpoint(
+            self._operation_endpoints, "운영정보"
         )
-        realtime_items = self._items(
-            self._request(self._realtime_endpoint), "실시간정보"
+        realtime_items = self._items_from_available_endpoint(
+            self._realtime_endpoints, "실시간정보"
         )
         result = StationSourceResult(
             stations=self._normalize_stations(operation_items, realtime_items),
