@@ -158,6 +158,15 @@ pnpm dev
 
 ### 승인된 매뉴얼 준비
 
+현대·기아·제네시스는 공식 차종 API로 연결된 등록 차량을 대상으로 준비 명령을 실행할 수 있습니다. 명령을 실행하는 운영자가 제조사 사이트의 이용 조건을 확인하고 `--confirm-official-source`로 승인해야 하며, 앱의 일반 사용자 요청만으로 원문을 자동 수집하지 않습니다. 공식 API가 PDF를 제공하면 PDF를 사용하고, EV6처럼 웹 설명서만 제공하면 목차의 각 본문을 출처 URL이 보존된 UTF-8 TXT 묶음으로 준비합니다. 준비가 끝나면 같은 명령에서 차량별 검색 인덱스까지 생성합니다.
+
+```powershell
+cd src/api
+uv run python -m app.official_manual_prepare --vehicle-id <차량 ID> --confirm-official-source
+```
+
+연결된 현대·기아·제네시스 차량을 한 번에 준비하려면 `--vehicle-id` 대신 `--all`을 사용합니다. 같은 프로젝트 코드와 연식은 같은 `document_key`를 사용하므로 동일 설명서를 다시 등록해도 기존 청크를 재사용합니다. 다운로드한 원문과 생성된 `manifest.json`은 `APS_MANUAL_SOURCE_DIR` 아래에만 저장되며 Git에서 제외됩니다. 다른 제조사는 화요일 마감 범위에서 제외하고 기존 승인 카탈로그 방식만 유지합니다.
+
 `APS_MANUAL_SOURCE_DIR`(기본값 `src/api/data/manuals`) 안에 매뉴얼 파일과 `manifest.json`을 둡니다. 저장소에는 제조사 PDF를 커밋하지 않습니다.
 
 ```json
