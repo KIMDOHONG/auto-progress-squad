@@ -222,7 +222,12 @@ uv run fastapi dev
 
 후보의 경로 근접 거리는 도로 우회거리가 아닌 경로선과의 직선거리입니다. 실제 공급자가 설정되지 않은 동력원은 계산 결과를 유지한 채 `공급자 미설정`으로 안내합니다. 검토용 로컬 스냅샷은 `APS_STATION_CATALOG_PATH`로 지정할 수 있으며, 이 설정이 공식 EV·수소 어댑터보다 우선합니다. API 키나 원본 응답은 저장소에 포함하지 않습니다.
 
-현재 키워드 매뉴얼 검색의 재현 가능한 품질 기준은 [매뉴얼 검색 품질 평가 기준](docs/manual-search-evaluation.md)에 기록했습니다. 합성 한국어 질문 세트로 `Hit@3`와 `MRR`을 측정하며, 임베딩·벡터 검색 후보도 같은 조건에서 비교합니다.
+현재 키워드 매뉴얼 검색의 재현 가능한 품질 기준은 [매뉴얼 검색 품질 평가 기준](docs/manual-search-evaluation.md)에 기록했습니다. 저장소에 포함된 합성 한국어 질문 세트뿐 아니라, 로컬에 준비한 현대·기아·제네시스 공식 문서 인덱스도 별도 질문 세트로 `Hit@3`, `MRR`, 제조사 출처 격리를 평가할 수 있습니다. 실제 원문은 평가 데이터나 Git에 복제하지 않습니다.
+
+```powershell
+cd src/api
+uv run python -m app.manual_live_evaluation ../../tests/fixtures/manual-live-evaluation.hkg.v1.json
+```
 
 로컬 OpenVINO 임베딩 후보의 설치·실측 결과·라이선스·선택 근거는 [매뉴얼 임베딩 후보 비교](models/manual-embedding-candidates.md)를 참고하세요. 모델 가중치는 Git에 포함하지 않으며 `uv sync --locked --extra embedding`을 실행한 개발 환경의 Hugging Face 캐시에만 저장합니다.
 
@@ -236,7 +241,7 @@ $env:APS_MANUAL_EMBEDDING_MIN_SCORE = "0.82"
 uv run fastapi dev
 ```
 
-임베딩 모드는 모델을 처음 검색할 때 지연 로드하고, 문서 내용 지문별 벡터를 메모리에 최대 4개까지 보관합니다. 모델 의존성·가중치·추론 중 하나라도 준비되지 않으면 키워드 검색으로 자동 대체하지 않고 `503 manual_embedding_unavailable`을 반환합니다. 응답의 `search_engine`은 실제 사용한 `keyword-frequency-v1` 또는 `openvino-embedding-v1`을 표시합니다. 배포 결정과 실패 폐쇄 원칙은 [ADR-0005](docs/decisions/0005-use-opt-in-openvino-embedding-search.md)를 따릅니다.
+임베딩 모드는 모델을 처음 검색할 때 지연 로드하고, 문서 내용 지문별 벡터를 메모리에 최대 4개까지 보관합니다. 모델 의존성·가중치·추론 중 하나라도 준비되지 않으면 키워드 검색으로 자동 대체하지 않고 `503 manual_embedding_unavailable`을 반환합니다. 응답의 `search_engine`은 실제 사용한 `keyword-frequency-v2` 또는 `openvino-embedding-v1`을 표시합니다. 키워드 v2는 숫자·영문·한글 사이의 띄어쓰기 차이와 `배터리`·`건전지` 표현 차이를 정규화합니다. 배포 결정과 실패 폐쇄 원칙은 [ADR-0005](docs/decisions/0005-use-opt-in-openvino-embedding-search.md)를 따릅니다.
 
 생성형 매뉴얼 답변은 기본적으로 꺼져 있습니다. 검토한 OpenVINO GenAI 모델을 로컬에 별도로 준비한 검증 환경에서만 다음과 같이 활성화합니다. 저장소에는 모델 가중치나 제조사 PDF를 넣지 않습니다.
 
@@ -265,7 +270,7 @@ uv run fastapi dev
 2. **오피넷 주유소 실제 공급자 연결**: 일반·고급·초고급 휘발유와 일반·하이세탄 경유의 취급 여부·가격·영업 상태를 출처와 조회시각이 있는 후보로 연결
 3. **NAVER Maps 라이브 검증**: 별도 발급 키로 Geocoding·Reverse Geocoding·Directions 5·Dynamic Map의 실제 주소/GPS E2E와 계정 한도·비용을 확인하되 서버 Secret은 서버 환경변수에만 보관
 4. **제조사 매뉴얼 어댑터 확장**: [Issue #17](https://github.com/KIMDOHONG/auto-progress-squad/issues/17)의 공통 계약과 BMW VIN 보호 경계 뒤에, 사용 조건이 확인된 제조사부터 정확한 모델·연식 식별을 연결
-5. **검색·생성 품질 실제 문서 평가**: 선택형 OpenVINO 검색·생성을 승인된 실제 문서와 확장 질문 세트로 재평가
+5. **생성 품질 실제 문서 평가**: 키워드 검색은 넥쏘·ELECTRIFIED GV70 실제 문서 6문항 기준선을 마련했으므로, 선택형 OpenVINO 생성 답변을 같은 출처 격리 조건과 확장 질문 세트로 재평가
 6. **리콜 실제 API 연결**: [Issue #19](https://github.com/KIMDOHONG/auto-progress-squad/issues/19)의 공급자 계약에 승인받은 자동차리콜센터 API를 연결
 
 후속 개선사항은 구현 범위가 섞이지 않도록 다음 GitHub Issue에서 관리합니다.

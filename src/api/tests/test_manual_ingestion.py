@@ -153,7 +153,7 @@ def test_worker_marks_document_ready_and_search_returns_sources(
     assert search_response.status_code == 200
     payload = search_response.json()
     assert payload["answer"].startswith("공식 취급설명서에서")
-    assert payload["search_engine"] == "keyword-frequency-v1"
+    assert payload["search_engine"] == "keyword-frequency-v2"
     assert payload["answer_engine"] == "source-list-v1"
     assert payload["citations"] == []
     assert payload["sources"] == [

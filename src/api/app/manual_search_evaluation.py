@@ -83,7 +83,7 @@ def evaluate_keyword_search(
     question_count = len(dataset.questions)
     return {
         "dataset": dataset.name,
-        "search": "keyword-frequency-v1",
+        "search": "keyword-frequency-v2",
         "question_count": question_count,
         "limit": limit,
         "hit_rate_at_k": round(hits / question_count, 4),

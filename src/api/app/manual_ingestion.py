@@ -467,6 +467,24 @@ def _search_terms(question: str) -> list[str]:
     return terms
 
 
+_SEARCH_EQUIVALENTS = {
+    "배터리": ("건전지",),
+    "건전지": ("배터리",),
+}
+
+
+def _compact_search_text(value: str) -> str:
+    return re.sub(r"[^0-9a-zA-Z가-힣]+", "", value.lower())
+
+
+def _search_term_count(lowered: str, compact: str, term: str) -> int:
+    variants = (term, *_SEARCH_EQUIVALENTS.get(term, ()))
+    return max(
+        max(lowered.count(variant), compact.count(_compact_search_text(variant)))
+        for variant in variants
+    )
+
+
 def search_manual_document(
     database_path: Path, document_key: str, question: str, limit: int
 ) -> list[dict[str, object]]:
@@ -485,7 +503,11 @@ def rank_manual_chunks(
     for index, row in enumerate(rows):
         content = str(row["content"])
         lowered = content.lower()
-        score = sum(lowered.count(term) * max(len(term), 2) for term in terms)
+        compact = _compact_search_text(content)
+        score = sum(
+            _search_term_count(lowered, compact, term) * max(len(term), 2)
+            for term in terms
+        )
         if score <= 0:
             continue
         ranked.append(

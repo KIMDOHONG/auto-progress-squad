@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "name": "hkg-actual-owner-manual-baseline-v1",
+  "measured_at": "2026-09-06",
+  "documents": [
+    {
+      "vehicle_id": "sample-nexo",
+      "document_key": "hmc:FE:2021",
+      "questions": [
+        {
+          "question": "권장 타이어 공기압은 어디서 확인하나요?",
+          "relevant_pages": [374]
+        },
+        {
+          "question": "수소 충전구를 닫는 방법",
+          "relevant_pages": [136]
+        },
+        {
+          "question": "스마트키 배터리 교체",
+          "relevant_pages": [92]
+        }
+      ]
+    },
+    {
+      "vehicle_id": "sample-electrified-gv70",
+      "document_key": "genesis:JKEV:2027",
+      "questions": [
+        {
+          "question": "충전 커넥터 잠금 설정",
+          "relevant_pages": [25]
+        },
+        {
+          "question": "저압 타이어 경고등이 켜졌어요",
+          "relevant_pages": [526]
+        },
+        {
+          "question": "12V 배터리 방전 시동 방법",
+          "relevant_pages": [523, 524, 525]
+        }
+      ]
+    }
+  ]
+}

@@ -718,7 +718,7 @@ def search_manual(request: Request, payload: ManualSearchRequest) -> ManualSearc
             code="manual_index_not_ready",
             message="취급설명서 상태와 검색 인덱스가 일치하지 않습니다. 문서를 다시 준비해 주세요.",
         )
-    search_engine = "keyword-frequency-v1"
+    search_engine = "keyword-frequency-v2"
     if request.app.state.settings.manual_search_mode == "embedding":
         search_engine = "openvino-embedding-v1"
         try:

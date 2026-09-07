@@ -2,7 +2,7 @@
 
 - 관련 이슈: #18
 - 기준 측정일: 2026-08-29
-- 검색 구현: `keyword-frequency-v1`
+- 검색 구현: `keyword-frequency-v2`
 - 데이터: `tests/fixtures/manual-search-evaluation.v1.json`
 
 ## 목적
@@ -21,6 +21,27 @@ uv run --locked python -m app.manual_search_evaluation `
 ```
 
 평가기는 각 질문의 정답 페이지가 상위 3개 결과에 포함되는 비율인 `Hit@3`와, 첫 정답 순위의 역수를 평균한 `MRR`을 JSON으로 출력합니다.
+
+## 실제 공식 문서 기준선
+
+운영자가 준비한 로컬 공식 문서 인덱스가 있을 때는 원문을 저장소에 복제하지 않고 질문·정답 페이지만 기록한 `tests/fixtures/manual-live-evaluation.hkg.v1.json`으로 평가합니다.
+
+```powershell
+cd src/api
+uv run python -m app.manual_live_evaluation `
+  ../../tests/fixtures/manual-live-evaluation.hkg.v1.json
+```
+
+2026-09-06에 준비한 넥쏘 2021 공식 PDF(451쪽, 580청크)와 ELECTRIFIED GV70 2027 공식 PDF(594쪽, 704청크)를 키워드 검색으로 평가한 결과는 다음과 같습니다.
+
+- 질문: 차량별 3개, 총 6개
+- `Hit@3`: `1.0000`
+- `MRR`: `1.0000`
+- 제조사 출처 격리: 통과
+
+키워드 v1의 최초 측정값은 `Hit@3 0.6667`, `MRR 0.6667`이었습니다. 넥쏘의 `스마트키 배터리 교체`와 ELECTRIFIED GV70의 `12V 배터리 방전 시동 방법`이 원문 표현인 `스마트 키`, `건전지`, `12 V`와 일치하지 않아 실패했습니다. 키워드 v2에서 공백 정규화와 제한된 배터리·건전지 동의어 처리를 추가한 뒤 두 회귀 사례 모두 1위로 검색됐습니다. 질문 수가 작으므로 `1.0000`은 전체 설명서 질문 품질을 뜻하지 않으며, 질문 세트를 계속 확장해야 합니다.
+
+평가기는 차량의 준비 상태가 `ready`이고 문서 키가 정확히 일치할 때만 실행됩니다. 각 검색 결과의 URL 호스트가 해당 현대·기아·제네시스 공식 도메인인지도 함께 검사하므로 다른 차량이나 제조사 문서가 섞이면 `source_isolation_pass`가 실패합니다.
 
 ## 현재 기준값
 
