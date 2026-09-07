@@ -62,6 +62,9 @@ interface ApiManualSearchResult {
     section: string | null;
     excerpt: string;
   }>;
+  search_engine: ManualSearchResult["searchEngine"];
+  answer_engine: ManualSearchResult["answerEngine"];
+  citations: number[];
   generated_at: string;
 }
 
@@ -282,6 +285,9 @@ export async function searchApiManual(
   });
   return {
     answer: response.answer,
+    searchEngine: response.search_engine,
+    answerEngine: response.answer_engine,
+    citations: response.citations,
     generatedAt: response.generated_at,
     sources: response.sources.map((source) => ({
       documentName: source.document_name,

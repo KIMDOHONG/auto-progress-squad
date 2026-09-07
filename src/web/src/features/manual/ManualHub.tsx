@@ -333,19 +333,38 @@ export function ManualHub({ vehicle, syncStatus, onAttachManualAdapter }: Manual
           {searchError ? <p className="manual-search-error" role="alert">{searchError}</p> : null}
           {searchResult ? (
             <div className="manual-search-result" aria-live="polite">
-              <strong>{searchResult.answer}</strong>
+              <div className={`manual-answer-card ${searchResult.answerEngine === "openvino-genai-grounded-v1" ? "is-ai" : "is-source-list"}`}>
+                <div className="manual-answer-heading">
+                  <span>{searchResult.answerEngine === "openvino-genai-grounded-v1" ? "AI 설명" : "원문 검색 결과"}</span>
+                  <small>{searchResult.answerEngine === "openvino-genai-grounded-v1" ? "공식 설명서 근거로 생성" : "AI 요약 비활성"}</small>
+                </div>
+                <p>{searchResult.answer}</p>
+                {searchResult.answerEngine === "openvino-genai-grounded-v1" ? (
+                  <small className="manual-answer-notice">답변의 [번호]는 아래 공식 원문 근거 번호입니다. 중요한 안전 절차는 원문도 함께 확인해 주세요.</small>
+                ) : null}
+              </div>
               {searchResult.sources.length > 0 ? (
-                <ol>
-                  {searchResult.sources.map((source, index) => (
-                    <li key={`${source.sourceUrl}-${source.page ?? "none"}-${index}`}>
-                      <div>
-                        <a href={source.sourceUrl} {...EXTERNAL_LINK_PROPS}>{source.documentName}</a>
-                        <span>{source.page ? `${source.page}쪽` : "페이지 정보 없음"}{source.section ? ` · ${source.section}` : ""}</span>
-                      </div>
-                      <p>{source.excerpt}</p>
-                    </li>
-                  ))}
-                </ol>
+                <details className="manual-source-details">
+                  <summary>
+                    <span>공식 원문 근거 {searchResult.sources.length}건 보기</span>
+                    <small>제조사 문서 링크·페이지·발췌문</small>
+                  </summary>
+                  <ol>
+                    {searchResult.sources.map((source, index) => {
+                      const citationNumber = index + 1;
+                      const cited = searchResult.citations.includes(citationNumber);
+                      return (
+                        <li key={`${source.sourceUrl}-${source.page ?? "none"}-${index}`} className={cited ? "is-cited" : ""}>
+                          <div>
+                            <a href={source.sourceUrl} {...EXTERNAL_LINK_PROPS}>[{citationNumber}] {source.documentName}</a>
+                            <span>{cited ? "AI 답변 근거 · " : ""}{source.page ? `${source.page}쪽` : "페이지 정보 없음"}{source.section ? ` · ${source.section}` : ""}</span>
+                          </div>
+                          <p>{source.excerpt}</p>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </details>
               ) : <p>검색어를 바꾸거나 제조사 원문에서 직접 확인해 주세요.</p>}
             </div>
           ) : null}

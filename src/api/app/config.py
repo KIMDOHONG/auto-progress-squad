@@ -29,7 +29,7 @@ class Settings:
     manual_answer_mode: ManualAnswerMode = "source-list"
     manual_generation_model_path: Path | None = None
     manual_generation_device: str = "CPU"
-    manual_generation_max_new_tokens: int = 256
+    manual_generation_max_new_tokens: int = 160
     manual_grounding_min_token_overlap: float = 0.55
     naver_maps_client_id: str | None = None
     naver_maps_client_secret: str | None = None
@@ -138,7 +138,7 @@ class Settings:
                 "APS_MANUAL_GENERATION_DEVICE", "CPU"
             ),
             manual_generation_max_new_tokens=int(
-                os.getenv("APS_MANUAL_GENERATION_MAX_NEW_TOKENS", "256")
+                os.getenv("APS_MANUAL_GENERATION_MAX_NEW_TOKENS", "160")
             ),
             manual_grounding_min_token_overlap=float(
                 os.getenv("APS_MANUAL_GROUNDING_MIN_TOKEN_OVERLAP", "0.55")
