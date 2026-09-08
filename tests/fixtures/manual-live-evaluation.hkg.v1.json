@@ -62,6 +62,44 @@
           "relevant_pages": [331, 335]
         }
       ]
+    },
+    {
+      "vehicle_id": "eval-kia-ev6-2026",
+      "document_key": "kia:CV1:2026",
+      "questions": [
+        {
+          "question": "급속 충전은 어떻게 하나요?",
+          "relevant_source_urls": ["https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter1_7_6.html"]
+        },
+        {
+          "question": "충전 커넥터가 분리되지 않아요",
+          "relevant_source_urls": [
+            "https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter1_7_4.html"
+          ]
+        },
+        {
+          "question": "예약 충전이 바로 시작되지 않아요",
+          "relevant_source_urls": [
+            "https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter1_6_1.html"
+          ]
+        },
+        {
+          "question": "차량 시동이 걸리지 않을 때 12V 배터리는 어떻게 점프하나요?",
+          "relevant_source_urls": ["https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter7_3_1.html"]
+        },
+        {
+          "question": "권장 타이어 공기압 라벨은 어디 있나요?",
+          "relevant_source_urls": ["https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter9_10.html"]
+        },
+        {
+          "question": "EV6 롱레인지 배터리 용량은 몇 kWh인가요?",
+          "relevant_source_urls": ["https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter9_2.html"]
+        },
+        {
+          "question": "전기차가 침수됐을 때 어떻게 해야 하나요?",
+          "relevant_source_urls": ["https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter1_10_3.html"]
+        }
+      ]
     }
   ]
 }

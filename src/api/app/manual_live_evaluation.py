@@ -21,7 +21,9 @@ OFFICIAL_MANUAL_HOSTS = {
 @dataclass(frozen=True, slots=True)
 class LiveEvaluationQuestion:
     question: str
-    relevant_pages: tuple[int, ...]
+    relevant_pages: tuple[int, ...] = ()
+    relevant_source_urls: tuple[str, ...] = ()
+    relevant_sections: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,12 +54,30 @@ def load_live_evaluation_dataset(path: Path) -> LiveEvaluationDataset:
         questions = tuple(
             LiveEvaluationQuestion(
                 question=str(item["question"]).strip(),
-                relevant_pages=tuple(int(page) for page in item["relevant_pages"]),
+                relevant_pages=tuple(
+                    int(page) for page in item.get("relevant_pages", ())
+                ),
+                relevant_source_urls=tuple(
+                    str(url).strip()
+                    for url in item.get("relevant_source_urls", ())
+                    if str(url).strip()
+                ),
+                relevant_sections=tuple(
+                    str(section).strip()
+                    for section in item.get("relevant_sections", ())
+                    if str(section).strip()
+                ),
             )
             for item in raw_document.get("questions", ())
         )
         if not questions or any(
-            not item.question or not item.relevant_pages for item in questions
+            not item.question
+            or not (
+                item.relevant_pages
+                or item.relevant_source_urls
+                or item.relevant_sections
+            )
+            for item in questions
         ):
             raise ValueError("each live evaluation document requires valid questions")
         documents.append(
@@ -121,11 +141,26 @@ def evaluate_live_manual_search(
                 limit,
             )
             retrieved_pages = [int(result["page"]) for result in results]
+            retrieved_source_urls = [str(result["source_url"]) for result in results]
+            retrieved_sections = [
+                str(result["section"] or "") for result in results
+            ]
             rank = next(
                 (
                     index
-                    for index, page in enumerate(retrieved_pages, start=1)
-                    if page in item.relevant_pages
+                    for index, result in enumerate(results, start=1)
+                    if (
+                        not item.relevant_pages
+                        or int(result["page"]) in item.relevant_pages
+                    )
+                    and (
+                        not item.relevant_source_urls
+                        or str(result["source_url"]) in item.relevant_source_urls
+                    )
+                    and (
+                        not item.relevant_sections
+                        or str(result["section"] or "") in item.relevant_sections
+                    )
                 ),
                 None,
             )
@@ -146,7 +181,11 @@ def evaluate_live_manual_search(
                     "document_key": document.document_key,
                     "question": item.question,
                     "relevant_pages": list(item.relevant_pages),
+                    "relevant_source_urls": list(item.relevant_source_urls),
+                    "relevant_sections": list(item.relevant_sections),
                     "retrieved_pages": retrieved_pages,
+                    "retrieved_source_urls": retrieved_source_urls,
+                    "retrieved_sections": retrieved_sections,
                     "rank": rank,
                     "expected_source_host": expected_host,
                     "retrieved_source_hosts": source_hosts,

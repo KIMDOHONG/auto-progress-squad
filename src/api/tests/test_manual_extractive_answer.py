@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.manual_extractive_answer import build_extractive_manual_answer
+from app.manual_query import analyze_manual_question, manual_text_score
 
 
 def source(excerpt: str) -> dict[str, object]:
@@ -93,3 +94,68 @@ def test_extracts_explicit_maximum_charging_power() -> None:
     )
 
     assert result.answer == "이 차량의 최대 충전 출력은 240 kW입니다. [1]"
+
+
+def test_extracts_long_range_battery_capacity_from_official_spec_table() -> None:
+    result = build_extractive_manual_answer(
+        "EV6 롱레인지 배터리 용량은 몇 kWh인가요?",
+        [
+            source(
+                "배터리 용량 및 출력\nA−A+\n구분\n기본형\n항속형\n2WD\n2WD\n4WD\nGT\n"
+                "배터리 용량(kWh)\n63\n84\n모터 최고 출력(kW)\n125\n168"
+            )
+        ],
+    )
+
+    assert result.answer == (
+        "공식 제원표 기준 항속형(롱레인지) 배터리 용량은 84 kWh입니다. [1]"
+    )
+
+
+def test_drops_webhelp_text_size_control_from_answer() -> None:
+    result = build_extractive_manual_answer(
+        "권장 타이어 공기압 라벨은 어디 있나요?",
+        [
+            source(
+                "타이어 공기압 라벨\nA−A+\n타이어 공기압 라벨\n"
+                "권장 타이어 공기압은 운전석 옆 센터 필러의 라벨에 표기되어 있습니다."
+            )
+        ],
+    )
+
+    assert "A−A+" not in result.answer
+    assert "운전석 옆 센터 필러" in result.answer
+
+
+def test_fast_charge_question_prefers_procedure_chapter_over_general_settings() -> None:
+    profile = analyze_manual_question("급속 충전은 어떻게 하나요?")
+    procedure = manual_text_score(
+        profile,
+        "급속 충전 방법입니다. 충전 커넥터를 급속 충전 인렛에 연결하십시오.",
+        section="급속 충전 방법",
+    )
+    settings = manual_text_score(
+        profile,
+        "EV 설정에서 급속 충전 목표 배터리양을 변경할 수 있습니다.",
+        section="EV 설정",
+    )
+
+    assert profile.intent == "fast-charge"
+    assert procedure > settings
+
+
+def test_flood_question_prefers_flood_response_over_fire_response() -> None:
+    profile = analyze_manual_question("전기차가 침수됐을 때 어떻게 해야 하나요?")
+    flooded = manual_text_score(
+        profile,
+        "침수된 전기차에 접근하지 말고 안전한 장소로 대피하십시오.",
+        section="전기차가 침수된 경우",
+    )
+    fire = manual_text_score(
+        profile,
+        "전기차에 화재가 발생한 경우 소방서에 연락하십시오.",
+        section="전기차에 화재가 발생한 경우",
+    )
+
+    assert profile.intent == "flooded-ev"
+    assert flooded > fire

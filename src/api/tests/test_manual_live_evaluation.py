@@ -70,8 +70,8 @@ def test_live_dataset_loads_without_copying_manual_text() -> None:
     dataset = load_live_evaluation_dataset(dataset_path())
 
     assert dataset.name == "hkg-actual-owner-manual-baseline-v1"
-    assert len(dataset.documents) == 2
-    assert sum(len(document.questions) for document in dataset.documents) == 12
+    assert len(dataset.documents) == 3
+    assert sum(len(document.questions) for document in dataset.documents) == 19
 
 
 def test_live_evaluation_uses_ready_index_and_checks_source_isolation(
@@ -102,6 +102,75 @@ def test_live_evaluation_reports_cross_manufacturer_source(
 
     assert result["source_isolation_pass"] is False
     assert result["cases"][0]["source_isolation_pass"] is False
+
+
+def test_live_evaluation_can_identify_web_chapter_by_source_url(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "webhelp.db"
+    initialize_database(database_path)
+    payload = verified_manual_payload("live-evaluation-ev6")
+    payload.update(
+        {
+            "manufacturer": "기아",
+            "model": "EV6",
+            "model_year": 2026,
+            "manual_site_id": "kia",
+            "manual_model_name": "EV6",
+            "manual_project_code": "CV1",
+            "manual_model_year": 2026,
+            "manual_image_url": "https://ownersmanual.kia.com/api/v2/kia/files/1/ev6.png",
+        }
+    )
+    create_vehicle(database_path, VehicleCreate(**payload).model_dump())
+    target_url = "https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter9_10.html"
+    replace_manual_document(
+        database_path,
+        vehicle_id="live-evaluation-ev6",
+        document_key="kia:CV1:2026",
+        document_name="EV6 2026 취급설명서",
+        source_url="https://ownersmanual.kia.com/manual/EV6",
+        content_sha256="b" * 64,
+        page_count=2,
+        chunks=[
+            {
+                "page": 1,
+                "section": "충전 커넥터 잠금",
+                "content": "충전 커넥터 잠금 모드를 설정합니다.",
+                "source_url": (
+                    "https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/"
+                    "topics/chapter1_5.html"
+                ),
+            },
+            {
+                "page": 1,
+                "section": "타이어 공기압 라벨",
+                "content": "권장 타이어 공기압은 운전석 옆 센터 필러 라벨에서 확인합니다.",
+                "source_url": target_url,
+            },
+        ],
+    )
+    dataset = LiveEvaluationDataset(
+        name="webhelp-source-url",
+        measured_at="2026-09-08",
+        documents=(
+            LiveEvaluationDocument(
+                vehicle_id="live-evaluation-ev6",
+                document_key="kia:CV1:2026",
+                questions=(
+                    LiveEvaluationQuestion(
+                        question="권장 타이어 공기압 라벨 위치",
+                        relevant_source_urls=(target_url,),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    result = evaluate_live_manual_search(database_path, dataset)
+
+    assert result["hit_rate_at_k"] == 1.0
+    assert result["cases"][0]["retrieved_source_urls"][0] == target_url
 
 
 def test_live_evaluation_requires_registered_ready_document(tmp_path: Path) -> None:

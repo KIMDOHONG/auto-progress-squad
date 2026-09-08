@@ -13,6 +13,9 @@ ManualQueryIntent = Literal[
     "departure-schedule",
     "charging-power",
     "charging-lock",
+    "fast-charge",
+    "battery-capacity",
+    "flooded-ev",
     "tire-pressure-location",
     "jump-start",
 ]
@@ -143,6 +146,20 @@ _JUMP_START_PATTERNS = (
     "보조배터리",
     "점프케이블",
 )
+_FAST_CHARGE_PATTERNS = (
+    "급속 충전 방법",
+    "급속 충전기 연결 방법",
+    "급속 충전 인렛에 연결",
+)
+_BATTERY_CAPACITY_PATTERNS = (
+    "배터리 용량(kWh)",
+    "배터리 용량 및 출력",
+)
+_FLOODED_EV_PATTERNS = (
+    "전기차가 침수된 경우",
+    "침수된 전기차",
+    "전기 자동차 침수",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,16 +217,31 @@ def analyze_manual_question(question: str) -> ManualQuestionProfile:
         _contains_any(compact, ("12v", "배터리", "방전"))
         and _contains_any(compact, ("점프", "시동", "방전"))
     )
+    asks_fast_charge = "급속" in compact and "충전" in compact
+    asks_battery_capacity = (
+        "배터리" in compact
+        and "용량" in compact
+        and _contains_any(compact, ("몇", "kwh", "제원"))
+    )
+    asks_flooded_ev = "침수" in compact and _contains_any(
+        compact, ("전기차", "전기자동차", "차량")
+    )
 
     intent: ManualQueryIntent = "general"
     if asks_jump_start:
         intent = "jump-start"
+    elif asks_flooded_ev:
+        intent = "flooded-ev"
+    elif asks_battery_capacity:
+        intent = "battery-capacity"
     elif asks_tire_pressure_location:
         intent = "tire-pressure-location"
     elif asks_charging_lock:
         intent = "charging-lock"
     elif asks_charging and asks_power:
         intent = "charging-power"
+    elif asks_fast_charge:
+        intent = "fast-charge"
     elif asks_open and not asks_close:
         intent = "open"
     elif asks_close and not asks_open:
@@ -314,6 +346,26 @@ def manual_text_score(
             compact, _CHARGING_LOCK_SETTING_PATTERNS
         ):
             score -= 80
+    elif profile.intent == "fast-charge":
+        method_matches = sum(
+            compact_manual_text(pattern) in compact
+            for pattern in _FAST_CHARGE_PATTERNS
+        )
+        score += method_matches * 140 if method_matches else -100
+        if section and "급속충전방법" in compact_manual_text(section):
+            score += 260
+    elif profile.intent == "battery-capacity":
+        capacity_matches = sum(
+            compact_manual_text(pattern) in compact
+            for pattern in _BATTERY_CAPACITY_PATTERNS
+        )
+        score += capacity_matches * 180 if capacity_matches else -100
+    elif profile.intent == "flooded-ev":
+        flood_matches = sum(
+            compact_manual_text(pattern) in compact
+            for pattern in _FLOODED_EV_PATTERNS
+        )
+        score += flood_matches * 180 if flood_matches else -180
     elif profile.intent == "tire-pressure-location":
         location_matches = sum(
             compact_manual_text(pattern) in compact
@@ -361,6 +413,14 @@ def manual_segment_score(profile: ManualQuestionProfile, segment: str) -> int:
         return 0
     if profile.intent == "jump-start" and not _contains_any(
         compact, _JUMP_START_PATTERNS
+    ):
+        return 0
+    if profile.intent == "fast-charge" and not _contains_any(
+        compact, _FAST_CHARGE_PATTERNS
+    ):
+        return 0
+    if profile.intent == "flooded-ev" and not _contains_any(
+        compact, _FLOODED_EV_PATTERNS
     ):
         return 0
 

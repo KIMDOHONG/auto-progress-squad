@@ -84,6 +84,12 @@ def test_prepares_webhelp_topics_when_pdf_is_missing(client, tmp_path: Path) -> 
     _create(client, payload)
     toc_url = "https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/toc.html"
     topic_url = "https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter1_1.html"
+    nested_topic_url = (
+        "https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter1_1_1.html"
+    )
+    stale_topic_url = (
+        "https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter1_1_404.html"
+    )
 
     def fetch(url: str, _limit: int) -> FetchedResource:
         if "/owners-manuals?" in url:
@@ -93,7 +99,22 @@ def test_prepares_webhelp_topics_when_pdf_is_missing(client, tmp_path: Path) -> 
         if url == topic_url:
             return _resource(
                 url,
-                '<div class="topic-contents main-page"><h2>전기 자동차 충전</h2><div><p>충전 커넥터를 연결하십시오.</p></div></div>',
+                '<nav><a href="chapter9_9.html">전역 메뉴</a></nav>'
+                '<div class="topic-contents main-page"><h2>전기 자동차 충전</h2>'
+                '<div class="containd-section"><a href="chapter1_1_1.html">충전 연결 방법</a>'
+                '<a href="chapter1_1_404.html">삭제된 세부 항목</a>'
+                "<p>관련 세부 항목을 선택하십시오.</p></div></div>",
+            )
+        if url == nested_topic_url:
+            return _resource(
+                url,
+                '<div class="topic-contents"><h2>충전 연결 방법</h2>'
+                '<p>충전 커넥터를 연결하십시오.</p>'
+                '<a href="chapter1_1.html">전기 자동차 충전</a></div>',
+            )
+        if url == stale_topic_url:
+            raise OfficialManualPreparationError(
+                "official_manual_fetch_failed", "삭제된 공식 세부 페이지"
             )
         raise AssertionError(url)
 
@@ -103,13 +124,14 @@ def test_prepares_webhelp_topics_when_pdf_is_missing(client, tmp_path: Path) -> 
     )
 
     assert result.source_kind == "webhelp"
-    assert result.source_count == 1
+    assert result.source_count == 2
     assert result.chunk_count >= 1
     manifest = json.loads((source_root / "manifest.json").read_text(encoding="utf-8"))
-    chapter = manifest["documents"][0]["chapters"][0]
-    assert chapter["title"] == "전기 자동차 충전"
-    assert chapter["source_url"] == topic_url
-    text = (source_root / chapter["file"]).read_text(encoding="utf-8")
+    chapters = manifest["documents"][0]["chapters"]
+    assert [chapter["source_url"] for chapter in chapters] == [topic_url, nested_topic_url]
+    assert chapters[0]["title"] == "전기 자동차 충전"
+    assert chapters[1]["title"] == "충전 연결 방법"
+    text = (source_root / chapters[1]["file"]).read_text(encoding="utf-8")
     assert "충전 커넥터를 연결하십시오." in text
 
     search = client.post(
@@ -117,8 +139,8 @@ def test_prepares_webhelp_topics_when_pdf_is_missing(client, tmp_path: Path) -> 
         json={"vehicle_id": "webhelp-kia", "question": "충전 커넥터 연결"},
     )
     assert search.status_code == 200
-    assert search.json()["sources"][0]["source_url"] == topic_url
-    assert search.json()["sources"][0]["section"] == "전기 자동차 충전"
+    assert search.json()["sources"][0]["source_url"] == nested_topic_url
+    assert search.json()["sources"][0]["section"] == "충전 연결 방법"
 
 
 def test_rejects_manual_redirect_to_another_host(client, tmp_path: Path) -> None:

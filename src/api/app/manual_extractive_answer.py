@@ -55,6 +55,7 @@ _HEADING_ENDINGS = (
     "사용하기",
     "설정하기",
     "출발하기",
+    "순서",
 )
 
 
@@ -72,7 +73,18 @@ def _drop_layout_line(line: str) -> bool:
         return True
     if _IMAGE_CODE_PATTERN.fullmatch(compact) or _COMPACT_IMAGE_CODE_PATTERN.fullmatch(compact):
         return True
-    if compact in {"주의", "경고", "참고", "편의장치", "비상시응급조치", "정기점검"}:
+    if "충전커넥터(차량측)" in compact and "충전플러그(충전기측)" in compact:
+        return True
+    if compact in {
+        "A−A+",
+        "A-A+",
+        "주의",
+        "경고",
+        "참고",
+        "편의장치",
+        "비상시응급조치",
+        "정기점검",
+    }:
         return True
     return not re.search(r"[0-9A-Za-z가-힣]", compact)
 
@@ -136,6 +148,20 @@ def _segments(excerpt: str) -> list[str]:
     return sentences
 
 
+def _without_leading_section_heading(excerpt: str, section: object) -> str:
+    normalized_section = re.sub(r"\s+", " ", str(section or "")).strip()
+    if not normalized_section:
+        return excerpt
+    lines = excerpt.replace("\r", "").split("\n")
+    while lines:
+        first = re.sub(r"\s+", " ", lines[0]).strip()
+        if not first or first == normalized_section or _drop_layout_line(first):
+            lines.pop(0)
+            continue
+        break
+    return "\n".join(lines)
+
+
 def _segment_score(profile: ManualQuestionProfile, segment: str) -> int:
     if len(segment) < 16:
         return 0
@@ -152,6 +178,38 @@ def _numbered_value(segment: str) -> int | None:
     return int(match.group(0).rstrip(".) ")) if match else None
 
 
+def _battery_capacity_answer(
+    question: str,
+    sources: Sequence[Mapping[str, object]],
+) -> ExtractiveManualAnswer | None:
+    compact_question = re.sub(r"\s+", "", question.lower())
+    capacity_pattern = re.compile(
+        r"배터리\s*용량\s*\(\s*kwh\s*\)\s*"
+        r"(\d+(?:[.,]\d+)?)\s+(\d+(?:[.,]\d+)?)",
+        re.IGNORECASE,
+    )
+    for source_index, source in enumerate(sources):
+        match = capacity_pattern.search(str(source["excerpt"]))
+        if match is None:
+            continue
+        standard, long_range = match.groups()
+        if "롱레인지" in compact_question or "항속형" in compact_question:
+            answer = f"공식 제원표 기준 항속형(롱레인지) 배터리 용량은 {long_range} kWh입니다."
+        elif "기본형" in compact_question or "스탠다드" in compact_question:
+            answer = f"공식 제원표 기준 기본형 배터리 용량은 {standard} kWh입니다."
+        else:
+            answer = (
+                "공식 제원표 기준 배터리 용량은 "
+                f"기본형 {standard} kWh, 항속형(롱레인지) {long_range} kWh입니다."
+            )
+        citation_number = source_index + 1
+        return ExtractiveManualAnswer(
+            answer=f"{answer} [{citation_number}]",
+            citations=(citation_number,),
+        )
+    return None
+
+
 def build_extractive_manual_answer(
     question: str, sources: Sequence[Mapping[str, object]]
 ) -> ExtractiveManualAnswer:
@@ -160,8 +218,19 @@ def build_extractive_manual_answer(
     profile = analyze_manual_question(question)
     if not profile.terms:
         raise ValueError("question has no searchable terms")
+    if profile.intent == "battery-capacity":
+        capacity_answer = _battery_capacity_answer(question, sources)
+        if capacity_answer is not None:
+            return capacity_answer
 
-    all_segments = [_segments(str(source["excerpt"])) for source in sources]
+    all_segments = [
+        _segments(
+            _without_leading_section_heading(
+                str(source["excerpt"]), source.get("section")
+            )
+        )
+        for source in sources
+    ]
     candidates = [
         (score, source_index, segment_index, segment)
         for source_index, source_segments in enumerate(all_segments)
@@ -171,8 +240,9 @@ def build_extractive_manual_answer(
     if not candidates:
         raise ValueError("manual sources have no extractive answer segment")
 
-    _, selected_source_index, best_segment_index, _ = max(
-        candidates,
+    selected_source_index = min(source_index for _, source_index, _, _ in candidates)
+    _, _, best_segment_index, _ = max(
+        (item for item in candidates if item[1] == selected_source_index),
         key=lambda item: (item[0], -item[1], -item[2]),
     )
     source_segments = all_segments[selected_source_index]

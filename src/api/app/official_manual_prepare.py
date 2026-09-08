@@ -29,6 +29,7 @@ SUPPORTED_SITES = {
 }
 MAX_METADATA_BYTES = 2 * 1024 * 1024
 MAX_HTML_BYTES = 5 * 1024 * 1024
+MAX_WEBHELP_TOPICS = 1000
 Fetch = Callable[[str, int], "FetchedResource"]
 
 
@@ -138,6 +139,42 @@ class _TopicParser(HTMLParser):
         return "\n".join(line for line in lines if line)
 
 
+class _TopicLinkParser(HTMLParser):
+    """Collect links that are part of a topic body, excluding global navigation."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._capture_depth = 0
+        self._href: str | None = None
+        self._text: list[str] = []
+        self.links: list[tuple[str, str]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        classes = set((values.get("class") or "").split())
+        if tag == "div" and "topic-contents" in classes and self._capture_depth == 0:
+            self._capture_depth = 1
+        elif self._capture_depth and tag == "div":
+            self._capture_depth += 1
+        if self._capture_depth and tag == "a" and self._href is None:
+            href = values.get("href")
+            if href:
+                self._href = href
+                self._text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._href is not None:
+            self._text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a" and self._href is not None:
+            self.links.append((self._href, " ".join(self._text)))
+            self._href = None
+            self._text = []
+        if self._capture_depth and tag == "div":
+            self._capture_depth -= 1
+
+
 def _clean_inline_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
@@ -240,6 +277,30 @@ def _topic_links(toc_url: str, html: str, expected_host: str) -> list[tuple[str,
         raise OfficialManualPreparationError(
             "official_manual_toc_empty", "공식 웹 설명서 목차에서 본문 링크를 찾지 못했습니다."
         )
+    return links
+
+
+def _nested_topic_links(
+    topic_url: str,
+    html: str,
+    expected_host: str,
+    topic_path_prefix: str,
+) -> list[tuple[str, str]]:
+    parser = _TopicLinkParser()
+    parser.feed(html)
+    links: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    current_url = urlsplit(topic_url)._replace(query="", fragment="").geturl()
+    for href, label in parser.links:
+        absolute = urljoin(topic_url, href)
+        parsed = urlsplit(absolute)
+        if not parsed.path.startswith(topic_path_prefix) or not parsed.path.endswith(".html"):
+            continue
+        clean_url = parsed._replace(query="", fragment="").geturl()
+        _validate_url(clean_url, expected_host, prefix=topic_path_prefix)
+        if clean_url != current_url and clean_url not in seen:
+            seen.add(clean_url)
+            links.append((clean_url, _clean_inline_text(label)))
     return links
 
 
@@ -383,12 +444,36 @@ def prepare_vehicle_manual(
                 "official_manual_html_invalid", "공식 웹 설명서 목차를 해석하지 못했습니다."
             ) from error
         chapters: list[dict[str, str]] = []
-        for index, (topic_url, toc_title) in enumerate(
-            _topic_links(toc_resource.final_url, toc_html, expected_host), 1
-        ):
-            topic_resource = _fetch_official(
-                topic_url, expected_host, MAX_HTML_BYTES, fetch, prefix="/full_webhelp/"
-            )
+        topic_path_prefix = urlsplit(toc_resource.final_url).path.rsplit("/", 1)[0] + "/topics/"
+        pending_topics = _topic_links(toc_resource.final_url, toc_html, expected_host)
+        initial_topic_count = len(pending_topics)
+        queued_urls = {url for url, _title in pending_topics}
+        processed_urls: set[str] = set()
+        next_topic = 0
+        while next_topic < len(pending_topics):
+            topic_url, toc_title = pending_topics[next_topic]
+            next_topic += 1
+            if topic_url in processed_urls:
+                continue
+            processed_urls.add(topic_url)
+            try:
+                topic_resource = _fetch_official(
+                    topic_url,
+                    expected_host,
+                    MAX_HTML_BYTES,
+                    fetch,
+                    prefix="/full_webhelp/",
+                )
+            except OfficialManualPreparationError as error:
+                # Some official landing pages contain stale links to removed
+                # subtopics. A missing optional child must not discard the
+                # complete manual, while every TOC entry remains mandatory.
+                if (
+                    next_topic > initial_topic_count
+                    and error.code == "official_manual_fetch_failed"
+                ):
+                    continue
+                raise
             try:
                 topic_html = topic_resource.content.decode("utf-8")
             except UnicodeError as error:
@@ -396,6 +481,22 @@ def prepare_vehicle_manual(
                     "official_manual_html_invalid", "공식 웹 설명서 본문을 해석하지 못했습니다."
                 ) from error
             title, content = _extract_topic(topic_html, toc_title)
+            for nested_url, nested_title in _nested_topic_links(
+                topic_resource.final_url,
+                topic_html,
+                expected_host,
+                topic_path_prefix,
+            ):
+                if nested_url in queued_urls:
+                    continue
+                if len(queued_urls) >= MAX_WEBHELP_TOPICS:
+                    raise OfficialManualPreparationError(
+                        "official_manual_topic_limit_exceeded",
+                        "공식 웹 설명서의 본문 페이지 수가 허용 범위를 초과했습니다.",
+                    )
+                queued_urls.add(nested_url)
+                pending_topics.append((nested_url, nested_title))
+            index = len(chapters) + 1
             filename = f"{index:03d}-{Path(urlsplit(topic_url).path).stem}.txt"
             relative_file = relative_root / "topics" / filename
             file_path = source_root / relative_file
