@@ -159,3 +159,53 @@ def test_flood_question_prefers_flood_response_over_fire_response() -> None:
 
     assert profile.intent == "flooded-ev"
     assert flooded > fire
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "스포츠모드 어떻게 바꿔?",
+        "스포츠 모드",
+        "SPORT 모드로 바꾸는 방법",
+    ],
+)
+def test_drive_mode_question_extracts_operation_instead_of_table_or_ev_mode(
+    question: str,
+) -> None:
+    result = build_extractive_manual_answer(
+        question,
+        [
+            source(
+                "드라이브 모드별 기본 설정\nECO\nNORMAL\nSPORT\n"
+                "SPORT 모드는 에너지 효율이 낮아질 수 있습니다."
+            ),
+            source(
+                "드라이브 모드 조작\n작동 방법\n"
+                "스티어링 휠에 위치한 드라이브 모드 버튼을 눌러 변경하십시오.\n"
+                "SPORT 모드는 스포티한 주행을 제공합니다."
+            ),
+            source("인포테인먼트 홈 화면에서 EV 메뉴를 선택하면 EV 모드로 진입합니다."),
+        ],
+    )
+
+    assert "드라이브 모드 버튼을 눌러 변경" in result.answer
+    assert "EV 메뉴" not in result.answer
+    assert result.citations == (2,)
+
+
+def test_drift_mode_operation_question_extracts_paddle_instruction() -> None:
+    result = build_extractive_manual_answer(
+        "드리프트 모드 들어가는 방법",
+        [
+            source(
+                "드리프트 모드 (사양 적용 시)\n작동 방법\n"
+                "양쪽 패들 시프트 레버를 동시에 약 3초 이상 당기십시오.\n"
+                "드리프트 모드에 진입하면 클러스터에 표시등이 표시됩니다."
+            )
+        ],
+    )
+
+    assert result.answer == (
+        "양쪽 패들 시프트 레버를 동시에 약 3초 이상 당기십시오. [1]"
+    )
+    assert result.citations == (1,)

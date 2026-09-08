@@ -98,6 +98,22 @@
         {
           "question": "전기차가 침수됐을 때 어떻게 해야 하나요?",
           "relevant_source_urls": ["https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter1_10_3.html"]
+        },
+        {
+          "question": "스포츠모드 어떻게 바꿔?",
+          "relevant_source_urls": ["https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter5_6_1.html"]
+        },
+        {
+          "question": "스포츠 모드",
+          "relevant_source_urls": ["https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter5_6_1.html"]
+        },
+        {
+          "question": "SPORT 모드로 바꾸는 방법",
+          "relevant_source_urls": ["https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter5_6_1.html"]
+        },
+        {
+          "question": "드리프트 모드 들어가는 방법",
+          "relevant_source_urls": ["https://ownersmanual.kia.com/full_webhelp/CV1/2026/ko_KR/topics/chapter5_11.html"]
         }
       ]
     }

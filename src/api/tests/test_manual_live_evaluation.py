@@ -71,7 +71,7 @@ def test_live_dataset_loads_without_copying_manual_text() -> None:
 
     assert dataset.name == "hkg-actual-owner-manual-baseline-v1"
     assert len(dataset.documents) == 3
-    assert sum(len(document.questions) for document in dataset.documents) == 19
+    assert sum(len(document.questions) for document in dataset.documents) == 23
 
 
 def test_live_evaluation_uses_ready_index_and_checks_source_isolation(

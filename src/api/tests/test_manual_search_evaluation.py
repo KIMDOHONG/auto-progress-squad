@@ -107,3 +107,53 @@ def test_keyword_search_distinguishes_action_and_measurement_intent(
     results = rank_manual_chunks(rows, question, 1)
 
     assert results[0]["page"] == expected_page
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "스포츠모드 어떻게 바꿔?",
+        "스포츠 모드",
+        "SPORT 모드로 바꾸는 방법",
+    ],
+)
+def test_keyword_search_prefers_drive_mode_operation_over_similar_mode_text(
+    question: str,
+) -> None:
+    rows = [
+        {
+            "document_name": "EV6 2026 취급설명서",
+            "source_url": "https://example.com/pedal",
+            "page": 10,
+            "section": "기타 주의 사항",
+            "content": "차량을 바꿔가며 운전할 때는 페달 위치를 확인하십시오.",
+        },
+        {
+            "document_name": "EV6 2026 취급설명서",
+            "source_url": "https://example.com/ev-mode",
+            "page": 20,
+            "section": "EV 모드",
+            "content": "인포테인먼트 홈 화면에서 EV 메뉴를 선택하면 EV 모드로 진입합니다.",
+        },
+        {
+            "document_name": "EV6 2026 취급설명서",
+            "source_url": "https://example.com/drive-mode-table",
+            "page": 30,
+            "section": "드라이브 모드(DRIVE MODE)",
+            "content": "드라이브 모드별 기본 설정 표에는 ECO, NORMAL, SPORT가 있습니다.",
+        },
+        {
+            "document_name": "EV6 2026 취급설명서",
+            "source_url": "https://example.com/drive-mode-operation",
+            "page": 40,
+            "section": "드라이브 모드(DRIVE MODE)",
+            "content": (
+                "드라이브 모드 조작. 스티어링 휠에 위치한 드라이브 모드 "
+                "버튼을 눌러 변경하십시오. SPORT 모드는 스포티한 주행을 제공합니다."
+            ),
+        },
+    ]
+
+    results = rank_manual_chunks(rows, question, 3)
+
+    assert results[0]["page"] == 40

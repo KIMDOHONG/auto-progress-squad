@@ -210,6 +210,33 @@ def _battery_capacity_answer(
     return None
 
 
+def _operation_sentence_answer(
+    sources: Sequence[Mapping[str, object]],
+    pattern: re.Pattern[str],
+) -> ExtractiveManualAnswer | None:
+    for source_index, source in enumerate(sources):
+        match = pattern.search(str(source["excerpt"]))
+        if match is None:
+            continue
+        answer = re.sub(r"\s+", " ", match.group(0)).strip()
+        citation_number = source_index + 1
+        return ExtractiveManualAnswer(
+            answer=f"{answer} [{citation_number}]",
+            citations=(citation_number,),
+        )
+    return None
+
+
+_DRIVE_MODE_OPERATION_PATTERN = re.compile(
+    r"스티어링\s*휠에\s*위치한\s*드라이브\s*모드\s*버튼을\s*"
+    r"눌러\s*변경하십시오\."
+)
+_DRIFT_MODE_OPERATION_PATTERN = re.compile(
+    r"양쪽\s*패들\s*시프트\s*레버를\s*동시에\s*약\s*3초\s*"
+    r"이상\s*당기십시오\."
+)
+
+
 def build_extractive_manual_answer(
     question: str, sources: Sequence[Mapping[str, object]]
 ) -> ExtractiveManualAnswer:
@@ -218,6 +245,14 @@ def build_extractive_manual_answer(
     profile = analyze_manual_question(question)
     if not profile.terms:
         raise ValueError("question has no searchable terms")
+    operation_pattern = {
+        "drive-mode": _DRIVE_MODE_OPERATION_PATTERN,
+        "drift-mode": _DRIFT_MODE_OPERATION_PATTERN,
+    }.get(profile.intent)
+    if operation_pattern is not None:
+        operation_answer = _operation_sentence_answer(sources, operation_pattern)
+        if operation_answer is not None:
+            return operation_answer
     if profile.intent == "battery-capacity":
         capacity_answer = _battery_capacity_answer(question, sources)
         if capacity_answer is not None:

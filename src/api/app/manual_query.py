@@ -18,6 +18,8 @@ ManualQueryIntent = Literal[
     "flooded-ev",
     "tire-pressure-location",
     "jump-start",
+    "drive-mode",
+    "drift-mode",
 ]
 
 _TOKEN_PATTERN = re.compile(r"[0-9]+(?:[.,][0-9]+)*|[a-zA-Z]+|[가-힣]{2,}")
@@ -160,6 +162,26 @@ _FLOODED_EV_PATTERNS = (
     "침수된 전기차",
     "전기 자동차 침수",
 )
+_DRIVE_MODE_PATTERNS = (
+    "드라이브 모드(DRIVE MODE)",
+    "드라이브 모드 조작",
+    "드라이브 모드 버튼",
+    "SPORT",
+)
+_DRIVE_MODE_ACTION_PATTERNS = (
+    "드라이브 모드 조작",
+    "스티어링 휠에 위치한 드라이브 모드 버튼을 눌러 변경",
+    "드라이브 모드 버튼을 눌러 변경",
+)
+_DRIFT_MODE_PATTERNS = (
+    "드리프트 모드 (사양 적용 시)",
+    "드리프트 모드 작동 방법",
+    "드리프트 모드에 진입",
+)
+_DRIFT_MODE_ACTION_PATTERNS = (
+    "양쪽 패들 시프트 레버를 동시에 약 3초 이상 당기",
+    "드리프트 모드 작동 방법",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,6 +248,14 @@ def analyze_manual_question(question: str) -> ManualQuestionProfile:
     asks_flooded_ev = "침수" in compact and _contains_any(
         compact, ("전기차", "전기자동차", "차량")
     )
+    asks_drive_mode = _contains_any(
+        compact,
+        ("스포츠모드", "sport모드", "sportmode", "드라이브모드"),
+    )
+    asks_drift_mode = "드리프트모드" in compact and _contains_any(
+        compact,
+        ("어떻게", "들어", "진입", "작동", "사용", "켜", "방법"),
+    )
 
     intent: ManualQueryIntent = "general"
     if asks_jump_start:
@@ -250,6 +280,10 @@ def analyze_manual_question(question: str) -> ManualQuestionProfile:
         intent = "departure-schedule"
     elif asks_departure:
         intent = "drive-away"
+    elif asks_drift_mode:
+        intent = "drift-mode"
+    elif asks_drive_mode:
+        intent = "drive-mode"
 
     if intent == "drive-away":
         terms = [term for term in terms if term not in {"시동", "걸었는데"}]
@@ -261,6 +295,32 @@ def analyze_manual_question(question: str) -> ManualQuestionProfile:
         for term in ("점프", "시동"):
             if term not in terms:
                 terms.append(term)
+    if intent == "drive-mode":
+        terms = [
+            term
+            for term in terms
+            if term
+            not in {
+                "스포츠모드",
+                "스포츠",
+                "sport",
+                "모드",
+                "모드로",
+                "바꿔",
+                "바꾸는",
+                "변경",
+                "전환",
+                "진입",
+            }
+        ]
+        terms.extend(("드라이브모드", "sport"))
+    if intent == "drift-mode":
+        terms = [
+            term
+            for term in terms
+            if term not in {"드리프트", "모드", "들어가는", "방법", "진입", "작동"}
+        ]
+        terms.append("드리프트모드")
 
     return ManualQuestionProfile(
         question=question,
@@ -379,6 +439,36 @@ def manual_text_score(
         score += jump_matches * 110 if jump_matches else -120
         if "스마트키" in compact and not jump_matches:
             score -= 160
+    elif profile.intent == "drive-mode":
+        mode_matches = sum(
+            compact_manual_text(pattern) in compact
+            for pattern in _DRIVE_MODE_PATTERNS
+        )
+        action_matches = sum(
+            compact_manual_text(pattern) in compact
+            for pattern in _DRIVE_MODE_ACTION_PATTERNS
+        )
+        score += mode_matches * 80 if mode_matches else -180
+        score += action_matches * 180 if action_matches else -60
+        if section and "드라이브모드" in compact_manual_text(section):
+            score += 220
+        if "ev모드" in compact and "드라이브모드" not in compact:
+            score -= 260
+        if "페달위치" in compact and "드라이브모드" not in compact:
+            score -= 220
+    elif profile.intent == "drift-mode":
+        drift_matches = sum(
+            compact_manual_text(pattern) in compact
+            for pattern in _DRIFT_MODE_PATTERNS
+        )
+        action_matches = sum(
+            compact_manual_text(pattern) in compact
+            for pattern in _DRIFT_MODE_ACTION_PATTERNS
+        )
+        score += drift_matches * 120 if drift_matches else -180
+        score += action_matches * 220 if action_matches else -100
+        if section and "드리프트모드" in compact_manual_text(section):
+            score += 240
 
     return score
 
@@ -421,6 +511,14 @@ def manual_segment_score(profile: ManualQuestionProfile, segment: str) -> int:
         return 0
     if profile.intent == "flooded-ev" and not _contains_any(
         compact, _FLOODED_EV_PATTERNS
+    ):
+        return 0
+    if profile.intent == "drive-mode" and not _contains_any(
+        compact, _DRIVE_MODE_ACTION_PATTERNS
+    ):
+        return 0
+    if profile.intent == "drift-mode" and not _contains_any(
+        compact, _DRIFT_MODE_ACTION_PATTERNS
     ):
         return 0
 
