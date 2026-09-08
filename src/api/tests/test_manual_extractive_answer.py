@@ -61,3 +61,35 @@ def test_rejects_missing_sources_or_unsearchable_question() -> None:
         build_extractive_manual_answer("타이어", [])
     with pytest.raises(ValueError, match="searchable"):
         build_extractive_manual_answer("어디서?", [source("타이어 공기압")])
+
+
+def test_uses_source_with_matching_action_and_cites_that_source() -> None:
+    result = build_extractive_manual_answer(
+        "충전구 어떻게 열어야 해?",
+        [
+            source("충전구 커버를 눌러 확실하게 닫으십시오."),
+            source("1. 차량 시동을 끄십시오.\n2. 충전구 열림 버튼을 누르십시오."),
+        ],
+    )
+
+    assert "열림 버튼" in result.answer
+    assert "닫으십시오" not in result.answer
+    assert result.answer.endswith("[2]")
+    assert result.citations == (2,)
+
+
+def test_rejects_charger_rating_as_vehicle_maximum_charging_power() -> None:
+    with pytest.raises(ValueError, match="no extractive answer"):
+        build_extractive_manual_answer(
+            "급속 충전 최대 출력이 몇 kWh야?",
+            [source("350 kW급 충전기를 사용하면 약 19분이 소요됩니다.")],
+        )
+
+
+def test_extracts_explicit_maximum_charging_power() -> None:
+    result = build_extractive_manual_answer(
+        "급속 충전 최대 출력이 몇 kW야?",
+        [source("이 차량의 최대 충전 출력은 240 kW입니다.")],
+    )
+
+    assert result.answer == "이 차량의 최대 충전 출력은 240 kW입니다. [1]"

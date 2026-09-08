@@ -156,7 +156,7 @@ def test_worker_marks_document_ready_and_search_returns_sources(
         "타이어 공기압은 운전석 도어 라벨의 권장값을 확인하십시오. "
         "장거리 주행 전에는 냉간 상태에서 공기압을 점검하십시오. [1]"
     )
-    assert payload["search_engine"] == "keyword-frequency-v2"
+    assert payload["search_engine"] == "keyword-intent-v3"
     assert payload["answer_engine"] == "extractive-grounded-v1"
     assert payload["citations"] == [1]
     assert payload["sources"] == [

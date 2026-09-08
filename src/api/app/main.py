@@ -81,7 +81,7 @@ def create_app(
                 model_file=resolved_settings.manual_embedding_file,
                 min_score=resolved_settings.manual_embedding_min_score,
             )
-            if resolved_settings.manual_search_mode == "embedding"
+            if resolved_settings.manual_search_mode in {"embedding", "hybrid"}
             else None
         )
         app.state.manual_answer_generator = (

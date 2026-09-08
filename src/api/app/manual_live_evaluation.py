@@ -158,7 +158,7 @@ def evaluate_live_manual_search(
     return {
         "dataset": dataset.name,
         "measured_at": dataset.measured_at,
-        "search": "keyword-frequency-v2",
+        "search": "keyword-intent-v3",
         "document_count": len(dataset.documents),
         "question_count": question_count,
         "limit": limit,

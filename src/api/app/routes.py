@@ -33,11 +33,13 @@ from .manual_adapter_catalog import (
 from .manual_adapters import list_manual_adapter_capabilities
 from .manual_embedding_search import ManualEmbeddingSearchError
 from .manual_extractive_answer import build_extractive_manual_answer
+from .manual_query import analyze_manual_question, manual_no_answer_message
 from .manual_grounded_answer import (
     ManualAnswerGenerationError,
     ManualAnswerValidationError,
 )
 from .manual_ingestion import search_manual_document
+from .manual_hybrid_search import merge_manual_search_results
 from .recall_provider import (
     RecallProviderError,
     RecallQuery,
@@ -719,17 +721,21 @@ def search_manual(request: Request, payload: ManualSearchRequest) -> ManualSearc
             code="manual_index_not_ready",
             message="취급설명서 상태와 검색 인덱스가 일치하지 않습니다. 문서를 다시 준비해 주세요.",
         )
-    search_engine = "keyword-frequency-v2"
-    if request.app.state.settings.manual_search_mode == "embedding":
-        search_engine = "openvino-embedding-v1"
+    search_engine = "keyword-intent-v3"
+    if request.app.state.settings.manual_search_mode in {"embedding", "hybrid"}:
+        hybrid_mode = request.app.state.settings.manual_search_mode == "hybrid"
+        search_engine = (
+            "hybrid-intent-openvino-v1" if hybrid_mode else "openvino-embedding-v1"
+        )
+        rows = list_manual_chunk_rows(
+            request.app.state.settings.database_path, document_key
+        )
         try:
-            sources = request.app.state.manual_embedding_search.search(
-                list_manual_chunk_rows(
-                    request.app.state.settings.database_path, document_key
-                ),
+            embedding_sources = request.app.state.manual_embedding_search.search(
+                rows,
                 document_key=document_key,
                 question=payload.question,
-                limit=payload.limit,
+                limit=max(payload.limit * 3, 10) if hybrid_mode else payload.limit,
             )
         except ManualEmbeddingSearchError:
             raise ApiError(
@@ -738,6 +744,18 @@ def search_manual(request: Request, payload: ManualSearchRequest) -> ManualSearc
                 "매뉴얼 의미 검색 모델을 사용할 수 없습니다. 서버 설정과 모델 상태를 확인해 주세요.",
                 retryable=True,
             ) from None
+        if hybrid_mode:
+            keyword_sources = search_manual_document(
+                request.app.state.settings.database_path,
+                document_key,
+                payload.question,
+                max(payload.limit * 3, 10),
+            )
+            sources = merge_manual_search_results(
+                keyword_sources, embedding_sources, limit=payload.limit
+            )
+        else:
+            sources = embedding_sources
     else:
         sources = search_manual_document(
             request.app.state.settings.database_path,
@@ -775,7 +793,9 @@ def search_manual(request: Request, payload: ManualSearchRequest) -> ManualSearc
         try:
             extractive_answer = build_extractive_manual_answer(payload.question, sources)
         except ValueError:
-            answer = "공식 취급설명서에서 관련 내용을 찾았습니다. 아래 출처의 원문을 확인해 주세요."
+            answer = manual_no_answer_message(
+                analyze_manual_question(payload.question)
+            )
         else:
             answer = extractive_answer.answer
             citations = list(extractive_answer.citations)

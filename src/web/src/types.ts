@@ -45,7 +45,10 @@ export interface ManualSearchSource {
 export interface ManualSearchResult {
   answer: string;
   sources: ManualSearchSource[];
-  searchEngine: "keyword-frequency-v2" | "openvino-embedding-v1";
+  searchEngine:
+    | "keyword-intent-v3"
+    | "openvino-embedding-v1"
+    | "hybrid-intent-openvino-v1";
   answerEngine: "source-list-v1" | "extractive-grounded-v1" | "openvino-genai-grounded-v1";
   citations: number[];
   generatedAt: string;

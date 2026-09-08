@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "hkg-actual-owner-manual-baseline-v1",
-  "measured_at": "2026-09-06",
+  "measured_at": "2026-09-08",
   "documents": [
     {
       "vehicle_id": "sample-nexo",
@@ -9,7 +9,7 @@
       "questions": [
         {
           "question": "권장 타이어 공기압은 어디서 확인하나요?",
-          "relevant_pages": [374]
+          "relevant_pages": [374, 437]
         },
         {
           "question": "수소 충전구를 닫는 방법",
@@ -18,6 +18,14 @@
         {
           "question": "스마트키 배터리 교체",
           "relevant_pages": [92]
+        },
+        {
+          "question": "수소 충전구 어떻게 열어야 해?",
+          "relevant_pages": [135]
+        },
+        {
+          "question": "시동은 걸었는데 어떻게 출발해야 해?",
+          "relevant_pages": [263]
         }
       ]
     },
@@ -27,7 +35,7 @@
       "questions": [
         {
           "question": "충전 커넥터 잠금 설정",
-          "relevant_pages": [25]
+          "relevant_pages": [17]
         },
         {
           "question": "저압 타이어 경고등이 켜졌어요",
@@ -36,6 +44,22 @@
         {
           "question": "12V 배터리 방전 시동 방법",
           "relevant_pages": [523, 524, 525]
+        },
+        {
+          "question": "충전기 꽂으려고 하는데 최대 출력 어느 정도 받을 수 있어?",
+          "relevant_pages": [15]
+        },
+        {
+          "question": "급속충전기 꽂았을 때 최대 몇 kWh까지 받을 수 있어?",
+          "relevant_pages": [15]
+        },
+        {
+          "question": "출발은 어떻게 해야 해?",
+          "relevant_pages": [331, 335]
+        },
+        {
+          "question": "시동은 걸었는데 출발은 어떻게 해야 해?",
+          "relevant_pages": [331, 335]
         }
       ]
     }

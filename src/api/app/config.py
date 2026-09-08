@@ -12,7 +12,7 @@ DEFAULT_CORS_ORIGINS = (
     "http://localhost:5173",
     "https://kimdohong.github.io",
 )
-ManualSearchMode = Literal["keyword", "embedding"]
+ManualSearchMode = Literal["keyword", "embedding", "hybrid"]
 ManualAnswerMode = Literal["extractive", "source-list", "openvino"]
 
 
@@ -47,8 +47,10 @@ class Settings:
     hydrogen_station_cache_ttl_seconds: float = 300.0
 
     def __post_init__(self) -> None:
-        if self.manual_search_mode not in {"keyword", "embedding"}:
-            raise ValueError("APS_MANUAL_SEARCH_MODE must be keyword or embedding")
+        if self.manual_search_mode not in {"keyword", "embedding", "hybrid"}:
+            raise ValueError(
+                "APS_MANUAL_SEARCH_MODE must be keyword, embedding, or hybrid"
+            )
         if not 0 <= self.manual_embedding_min_score <= 1:
             raise ValueError("APS_MANUAL_EMBEDDING_MIN_SCORE must be between 0 and 1")
         if self.manual_answer_mode not in {"extractive", "source-list", "openvino"}:

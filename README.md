@@ -231,7 +231,7 @@ uv run python -m app.manual_live_evaluation ../../tests/fixtures/manual-live-eva
 
 로컬 OpenVINO 임베딩 후보의 설치·실측 결과·라이선스·선택 근거는 [매뉴얼 임베딩 후보 비교](models/manual-embedding-candidates.md)를 참고하세요. 모델 가중치는 Git에 포함하지 않으며 `uv sync --locked --extra embedding`을 실행한 개발 환경의 Hugging Face 캐시에만 저장합니다.
 
-기본 검색 모드는 기존 `keyword`입니다. 검증 서버에서 E5 OpenVINO 의미 검색을 명시적으로 사용할 때만 다음과 같이 실행합니다.
+기본 검색 모드는 의도·반대 동작·단위를 구분하는 `keyword`입니다. 검증 서버에서 E5 OpenVINO 의미 검색만 사용하려면 `embedding`, 의도 키워드 검색과 의미 검색을 결합하려면 `hybrid`를 명시합니다.
 
 ```powershell
 cd src/api
@@ -241,7 +241,7 @@ $env:APS_MANUAL_EMBEDDING_MIN_SCORE = "0.82"
 uv run fastapi dev
 ```
 
-임베딩 모드는 모델을 처음 검색할 때 지연 로드하고, 문서 내용 지문별 벡터를 메모리에 최대 4개까지 보관합니다. 모델 의존성·가중치·추론 중 하나라도 준비되지 않으면 키워드 검색으로 자동 대체하지 않고 `503 manual_embedding_unavailable`을 반환합니다. 응답의 `search_engine`은 실제 사용한 `keyword-frequency-v2` 또는 `openvino-embedding-v1`을 표시합니다. 키워드 v2는 숫자·영문·한글 사이의 띄어쓰기 차이와 `배터리`·`건전지` 표현 차이를 정규화합니다. 배포 결정과 실패 폐쇄 원칙은 [ADR-0005](docs/decisions/0005-use-opt-in-openvino-embedding-search.md)를 따릅니다.
+임베딩과 하이브리드 모드는 모델을 처음 검색할 때 지연 로드하고, 문서 내용 지문별 벡터를 메모리에 최대 4개까지 보관합니다. `hybrid`는 키워드 순위에 더 높은 가중치를 두고 의미 검색 순위와 합칩니다. 모델 의존성·가중치·추론 중 하나라도 준비되지 않으면 키워드 검색으로 자동 대체하지 않고 `503 manual_embedding_unavailable`을 반환합니다. 응답의 `search_engine`은 실제 사용한 `keyword-intent-v3`, `openvino-embedding-v1`, `hybrid-intent-openvino-v1` 중 하나를 표시합니다. 키워드 v3는 띄어쓰기·동의어뿐 아니라 열기/닫기, 실제 출발/예약 출발, 충전 출력 단위, 점프 시동, 설정·위치 의도를 구분합니다. 배포 결정과 실패 폐쇄 원칙은 [ADR-0005](docs/decisions/0005-use-opt-in-openvino-embedding-search.md)를 따릅니다.
 
 기본 매뉴얼 답변은 모델을 사용하지 않는 `extractive` 방식입니다. 검색 1위의 공식 원문에서 질문과 직접 관련된 완결 문장 또는 번호 단계를 최대 3~4개 추려 `[1]` 출처와 함께 보여주고, 아래 `공식 원문 근거`에서 전체 검색 결과를 선택해 펼칠 수 있습니다. 화면은 이를 `공식 원문 핵심 안내`로 표시해 생성형 AI 설명과 구분합니다. 생성형 매뉴얼 답변은 기본적으로 꺼져 있으며, 검토한 OpenVINO GenAI 모델을 로컬에 별도로 준비한 검증 환경에서만 다음과 같이 활성화합니다. 저장소에는 모델 가중치나 제조사 PDF를 넣지 않습니다.
 

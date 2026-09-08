@@ -106,12 +106,12 @@ def test_embedding_search_reindexes_changed_document() -> None:
     assert [len(batch) for batch in model.encoded_batches] == [1, 1, 1, 1]
 
 
-def embedding_client(tmp_path: Path) -> TestClient:
+def embedding_client(tmp_path: Path, *, search_mode: str = "embedding") -> TestClient:
     settings = Settings(
         database_path=tmp_path / "embedding.db",
         cors_origins=("https://kimdohong.github.io",),
         manual_source_dir=tmp_path / "manuals",
-        manual_search_mode="embedding",
+        manual_search_mode=search_mode,  # type: ignore[arg-type]
     )
     return TestClient(create_app(settings))
 
@@ -139,6 +139,24 @@ def test_embedding_mode_is_used_by_manual_search_api(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert response.json()["search_engine"] == "openvino-embedding-v1"
+    assert response.json()["sources"][0]["page"] == 1
+
+
+def test_hybrid_mode_combines_intent_keyword_and_embedding_search(
+    tmp_path: Path,
+) -> None:
+    model = FakeSemanticModel()
+    with embedding_client(tmp_path, search_mode="hybrid") as client:
+        client.app.state.manual_embedding_search = searcher_with(model)
+        prepare_ready_manual(client, tmp_path)
+
+        response = client.post(
+            "/api/v1/manual/search",
+            json={"vehicle_id": "verified-ioniq5", "question": "타이어 바람 압력"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["search_engine"] == "hybrid-intent-openvino-v1"
     assert response.json()["sources"][0]["page"] == 1
 
 

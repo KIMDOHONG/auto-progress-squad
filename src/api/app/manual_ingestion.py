@@ -19,6 +19,7 @@ from .database import (
     replace_manual_document,
     reuse_manual_document,
 )
+from .manual_query import analyze_manual_question, manual_text_score
 
 
 MAX_MANUAL_BYTES = 100 * 1024 * 1024
@@ -453,38 +454,6 @@ def run_pending_ingestion(
     return results
 
 
-def _search_terms(question: str) -> list[str]:
-    suffixes = ("에서", "으로", "까지", "부터", "에게", "은", "는", "이", "가", "을", "를", "의")
-    terms: list[str] = []
-    for raw_term in re.findall(r"[0-9a-zA-Z가-힣]{2,}", question.lower()):
-        term = raw_term
-        for suffix in suffixes:
-            if term.endswith(suffix) and len(term) > len(suffix) + 1:
-                term = term[: -len(suffix)]
-                break
-        if term not in terms:
-            terms.append(term)
-    return terms
-
-
-_SEARCH_EQUIVALENTS = {
-    "배터리": ("건전지",),
-    "건전지": ("배터리",),
-}
-
-
-def _compact_search_text(value: str) -> str:
-    return re.sub(r"[^0-9a-zA-Z가-힣]+", "", value.lower())
-
-
-def _search_term_count(lowered: str, compact: str, term: str) -> int:
-    variants = (term, *_SEARCH_EQUIVALENTS.get(term, ()))
-    return max(
-        max(lowered.count(variant), compact.count(_compact_search_text(variant)))
-        for variant in variants
-    )
-
-
 def search_manual_document(
     database_path: Path, document_key: str, question: str, limit: int
 ) -> list[dict[str, object]]:
@@ -496,17 +465,16 @@ def search_manual_document(
 def rank_manual_chunks(
     rows: Iterable[Mapping[str, object]], question: str, limit: int
 ) -> list[dict[str, object]]:
-    terms = _search_terms(question)
-    if not terms:
+    profile = analyze_manual_question(question)
+    if not profile.terms:
         return []
     ranked: list[tuple[int, int, dict[str, object]]] = []
     for index, row in enumerate(rows):
         content = str(row["content"])
-        lowered = content.lower()
-        compact = _compact_search_text(content)
-        score = sum(
-            _search_term_count(lowered, compact, term) * max(len(term), 2)
-            for term in terms
+        score = manual_text_score(
+            profile,
+            content,
+            section=str(row["section"]) if row["section"] else None,
         )
         if score <= 0:
             continue
