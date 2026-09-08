@@ -13,7 +13,7 @@ DEFAULT_CORS_ORIGINS = (
     "https://kimdohong.github.io",
 )
 ManualSearchMode = Literal["keyword", "embedding"]
-ManualAnswerMode = Literal["source-list", "openvino"]
+ManualAnswerMode = Literal["extractive", "source-list", "openvino"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +26,7 @@ class Settings:
     manual_embedding_revision: str = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
     manual_embedding_file: str = "openvino/openvino_model.xml"
     manual_embedding_min_score: float = 0.82
-    manual_answer_mode: ManualAnswerMode = "source-list"
+    manual_answer_mode: ManualAnswerMode = "extractive"
     manual_generation_model_path: Path | None = None
     manual_generation_device: str = "CPU"
     manual_generation_max_new_tokens: int = 160
@@ -51,8 +51,10 @@ class Settings:
             raise ValueError("APS_MANUAL_SEARCH_MODE must be keyword or embedding")
         if not 0 <= self.manual_embedding_min_score <= 1:
             raise ValueError("APS_MANUAL_EMBEDDING_MIN_SCORE must be between 0 and 1")
-        if self.manual_answer_mode not in {"source-list", "openvino"}:
-            raise ValueError("APS_MANUAL_ANSWER_MODE must be source-list or openvino")
+        if self.manual_answer_mode not in {"extractive", "source-list", "openvino"}:
+            raise ValueError(
+                "APS_MANUAL_ANSWER_MODE must be extractive, source-list, or openvino"
+            )
         if not self.manual_generation_device.strip():
             raise ValueError("APS_MANUAL_GENERATION_DEVICE must not be empty")
         if self.manual_generation_max_new_tokens < 1:
@@ -107,7 +109,7 @@ class Settings:
             "APS_MANUAL_SEARCH_MODE", "keyword"
         ).strip().lower()
         manual_answer_mode = os.getenv(
-            "APS_MANUAL_ANSWER_MODE", "source-list"
+            "APS_MANUAL_ANSWER_MODE", "extractive"
         ).strip().lower()
         configured_model_path = os.getenv("APS_MANUAL_GENERATION_MODEL_PATH")
         configured_station_catalog_path = os.getenv("APS_STATION_CATALOG_PATH")

@@ -334,11 +334,13 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .manual-search-result > p { margin: 0; color: var(--muted); font-size: 12px; }
 .manual-answer-card { display: grid; gap: 10px; border: 1px solid #c9d9f5; border-radius: 14px; background: #f4f8ff; padding: 18px; }
 .manual-answer-card.is-ai { border-color: #a7ddc9; background: linear-gradient(135deg, #f0fdf7, #f4f8ff); }
+.manual-answer-card.is-extractive { border-color: #b9d3ff; background: linear-gradient(135deg, #f4f8ff, #f7fbff); }
 .manual-answer-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .manual-answer-heading span { color: #14366f; font-size: 12px; font-weight: 900; }
 .manual-answer-card.is-ai .manual-answer-heading span { color: #087e5d; }
+.manual-answer-card.is-extractive .manual-answer-heading span { color: #2459c4; }
 .manual-answer-heading small { color: var(--muted); font-size: 9px; font-weight: 700; }
-.manual-answer-card > p { margin: 0; color: #19324f; font-size: 14px; font-weight: 700; line-height: 1.75; }
+.manual-answer-card > p { margin: 0; color: #19324f; font-size: 14px; font-weight: 700; line-height: 1.75; white-space: pre-line; }
 .manual-answer-notice { color: var(--muted); font-size: 10px; line-height: 1.55; }
 .manual-source-details { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: white; }
 .manual-source-details > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; cursor: pointer; list-style-position: inside; }

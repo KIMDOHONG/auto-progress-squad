@@ -519,7 +519,7 @@ def rank_manual_chunks(
                     "source_url": row["source_url"],
                     "page": row["page"],
                     "section": row["section"],
-                    "excerpt": content[:500],
+                    "excerpt": content[:1200],
                 },
             )
         )

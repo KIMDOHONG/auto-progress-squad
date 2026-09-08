@@ -32,6 +32,7 @@ from .manual_adapter_catalog import (
 )
 from .manual_adapters import list_manual_adapter_capabilities
 from .manual_embedding_search import ManualEmbeddingSearchError
+from .manual_extractive_answer import build_extractive_manual_answer
 from .manual_grounded_answer import (
     ManualAnswerGenerationError,
     ManualAnswerValidationError,
@@ -770,6 +771,15 @@ def search_manual(request: Request, payload: ManualSearchRequest) -> ManualSearc
         answer = grounded_answer.answer
         citations = list(grounded_answer.citations)
         answer_engine = "openvino-genai-grounded-v1"
+    elif request.app.state.settings.manual_answer_mode == "extractive":
+        try:
+            extractive_answer = build_extractive_manual_answer(payload.question, sources)
+        except ValueError:
+            answer = "공식 취급설명서에서 관련 내용을 찾았습니다. 아래 출처의 원문을 확인해 주세요."
+        else:
+            answer = extractive_answer.answer
+            citations = list(extractive_answer.citations)
+            answer_engine = "extractive-grounded-v1"
     else:
         answer = "공식 취급설명서에서 관련 내용을 찾았습니다. 아래 출처의 원문을 확인해 주세요."
     return ManualSearchResponse(

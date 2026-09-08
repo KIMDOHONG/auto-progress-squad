@@ -22,10 +22,45 @@ interface ManualGenerationOption {
   sourceCheckedAt: string;
 }
 
+interface ManualAnswerPresentation {
+  className: "is-ai" | "is-extractive" | "is-source-list";
+  title: string;
+  subtitle: string;
+  notice?: string;
+  citationLabel: string;
+}
+
 const EXTERNAL_LINK_PROPS = {
   target: "_blank",
   rel: "noreferrer noopener",
 } as const;
+
+function getAnswerPresentation(answerEngine: ManualSearchResult["answerEngine"]): ManualAnswerPresentation {
+  if (answerEngine === "openvino-genai-grounded-v1") {
+    return {
+      className: "is-ai",
+      title: "AI 설명",
+      subtitle: "공식 설명서 근거로 생성",
+      notice: "답변의 [번호]는 아래 공식 원문 근거 번호입니다. 중요한 안전 절차는 원문도 함께 확인해 주세요.",
+      citationLabel: "AI 답변 근거",
+    };
+  }
+  if (answerEngine === "extractive-grounded-v1") {
+    return {
+      className: "is-extractive",
+      title: "공식 원문 핵심 안내",
+      subtitle: "질문 관련 문장 발췌",
+      notice: "내용을 새로 만들지 않고 공식 취급설명서의 관련 문장만 추렸습니다. [번호]에서 전체 문맥을 확인해 주세요.",
+      citationLabel: "핵심 안내 근거",
+    };
+  }
+  return {
+    className: "is-source-list",
+    title: "원문 검색 결과",
+    subtitle: "핵심 문장 추출 불가",
+    citationLabel: "검색 근거",
+  };
+}
 
 function ManualVehicleVisual({ imageUrl, label }: { imageUrl?: string; label: string }) {
   const [failed, setFailed] = useState(false);
@@ -79,6 +114,7 @@ export function ManualHub({ vehicle, syncStatus, onAttachManualAdapter }: Manual
   const [linkNotice, setLinkNotice] = useState<string | null>(null);
   const [generationOptions, setGenerationOptions] = useState<ManualGenerationOption[]>([]);
   const [selectedGeneration, setSelectedGeneration] = useState("");
+  const answerPresentation = searchResult ? getAnswerPresentation(searchResult.answerEngine) : null;
 
   useEffect(() => {
     setLinking(false);
@@ -333,15 +369,13 @@ export function ManualHub({ vehicle, syncStatus, onAttachManualAdapter }: Manual
           {searchError ? <p className="manual-search-error" role="alert">{searchError}</p> : null}
           {searchResult ? (
             <div className="manual-search-result" aria-live="polite">
-              <div className={`manual-answer-card ${searchResult.answerEngine === "openvino-genai-grounded-v1" ? "is-ai" : "is-source-list"}`}>
+              <div className={`manual-answer-card ${answerPresentation?.className ?? "is-source-list"}`}>
                 <div className="manual-answer-heading">
-                  <span>{searchResult.answerEngine === "openvino-genai-grounded-v1" ? "AI 설명" : "원문 검색 결과"}</span>
-                  <small>{searchResult.answerEngine === "openvino-genai-grounded-v1" ? "공식 설명서 근거로 생성" : "AI 요약 비활성"}</small>
+                  <span>{answerPresentation?.title}</span>
+                  <small>{answerPresentation?.subtitle}</small>
                 </div>
                 <p>{searchResult.answer}</p>
-                {searchResult.answerEngine === "openvino-genai-grounded-v1" ? (
-                  <small className="manual-answer-notice">답변의 [번호]는 아래 공식 원문 근거 번호입니다. 중요한 안전 절차는 원문도 함께 확인해 주세요.</small>
-                ) : null}
+                {answerPresentation?.notice ? <small className="manual-answer-notice">{answerPresentation.notice}</small> : null}
               </div>
               {searchResult.sources.length > 0 ? (
                 <details className="manual-source-details">
@@ -357,7 +391,7 @@ export function ManualHub({ vehicle, syncStatus, onAttachManualAdapter }: Manual
                         <li key={`${source.sourceUrl}-${source.page ?? "none"}-${index}`} className={cited ? "is-cited" : ""}>
                           <div>
                             <a href={source.sourceUrl} {...EXTERNAL_LINK_PROPS}>[{citationNumber}] {source.documentName}</a>
-                            <span>{cited ? "AI 답변 근거 · " : ""}{source.page ? `${source.page}쪽` : "페이지 정보 없음"}{source.section ? ` · ${source.section}` : ""}</span>
+                            <span>{cited ? `${answerPresentation?.citationLabel} · ` : ""}{source.page ? `${source.page}쪽` : "페이지 정보 없음"}{source.section ? ` · ${source.section}` : ""}</span>
                           </div>
                           <p>{source.excerpt}</p>
                         </li>

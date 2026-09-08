@@ -202,7 +202,9 @@ class ManualSearchResponse(BaseModel):
     answer: str
     sources: list[ManualSource]
     search_engine: Literal["keyword-frequency-v2", "openvino-embedding-v1"]
-    answer_engine: Literal["source-list-v1", "openvino-genai-grounded-v1"]
+    answer_engine: Literal[
+        "source-list-v1", "extractive-grounded-v1", "openvino-genai-grounded-v1"
+    ]
     citations: list[int]
     generated_at: str
 

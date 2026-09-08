@@ -114,7 +114,7 @@ describe("manual ingestion status", () => {
     fireEvent.click(screen.getByRole("button", { name: "설명서 검색" }));
 
     expect(await screen.findByText("공식 취급설명서에서 관련 내용을 찾았습니다.")).toBeInTheDocument();
-    expect(screen.getByText("AI 요약 비활성")).toBeInTheDocument();
+    expect(screen.getByText("핵심 문장 추출 불가")).toBeInTheDocument();
     const sources = screen.getByText("공식 원문 근거 1건 보기").closest("details");
     expect(sources).not.toHaveAttribute("open");
     fireEvent.click(screen.getByText("공식 원문 근거 1건 보기"));
@@ -131,6 +131,68 @@ describe("manual ingestion status", () => {
         body: JSON.stringify({ vehicle_id: "sample-nexo", question: "타이어 공기압은?", limit: 5 }),
       }),
     ));
+  });
+
+  it("shows a readable official excerpt without presenting it as AI generation", async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          vehicle_id: "sample-nexo",
+          status: "ready",
+          document_key: "hmc:FE:2021",
+          source_url: "https://ownersmanual.hyundai.com/manual/example",
+          attempt_count: 0,
+          failure_code: null,
+          failure_message: null,
+          queued_at: null,
+          updated_at: "2026-08-28 10:01:00",
+          ready_at: "2026-08-28 10:01:00",
+          can_search: true,
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          answer: "부스트 모드는 급가속을 위해 최대 10초 동안 모터 장치의 최대 성능을 발휘하도록 제어합니다. [1]",
+          sources: [{
+            document_name: "ELECTRIFIED GV70 2027 취급설명서",
+            source_url: "https://ownersmanual.genesis.com/manual/egv70-2027",
+            page: 380,
+            section: "부스트 모드",
+            excerpt: "부스트 모드는 급가속을 위해 최대 10초 동안 모터 장치의 최대 성능을 발휘하도록 제어합니다.",
+          }],
+          search_engine: "keyword-frequency-v2",
+          answer_engine: "extractive-grounded-v1",
+          citations: [1],
+          generated_at: "2026-08-28T10:02:00+00:00",
+        }),
+      } as Response);
+
+    render(<ManualHub
+      vehicle={DEFAULT_VEHICLES[0]}
+      syncStatus={{
+        mode: "api",
+        label: "SQLite 동기화",
+        detail: "API",
+        apiBaseUrl: "http://127.0.0.1:8000",
+      }}
+    />);
+
+    expect(await screen.findByText("AI 매뉴얼 검색 준비 완료")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("설명서에서 찾을 내용"), {
+      target: { value: "부스트 모드 설명해줘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "설명서 검색" }));
+
+    expect(await screen.findByText("공식 원문 핵심 안내")).toBeInTheDocument();
+    expect(screen.getByText("질문 관련 문장 발췌")).toBeInTheDocument();
+    expect(screen.getByText(/내용을 새로 만들지 않고/)).toBeInTheDocument();
+    expect(screen.queryByText("AI 설명")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("공식 원문 근거 1건 보기"));
+    expect(screen.getByText(/핵심 안내 근거/)).toBeInTheDocument();
   });
 
   it("shows a grounded AI explanation before collapsible official evidence", async () => {
