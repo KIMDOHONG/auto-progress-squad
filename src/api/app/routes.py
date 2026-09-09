@@ -332,15 +332,25 @@ def search_planner_stations(
             message="충전·주유소 데이터 공급자가 설정되지 않았습니다.",
         )
     try:
-        source_result = provider.list_stations(payload.energy_kind)
+        route_path = [
+            (point.longitude, point.latitude) for point in payload.route_path
+        ]
+        route_lookup = getattr(provider, "list_stations_near_route", None)
+        source_result = (
+            route_lookup(
+                route_path,
+                corridor_km=payload.corridor_km,
+                limit=payload.limit,
+                fuel_grade=payload.fuel_grade,
+            )
+            if callable(route_lookup)
+            else provider.list_stations(payload.energy_kind)
+        )
         validate_station_source_result(
             provider.source_name, provider.source_url, source_result
         )
         ranked = rank_route_stations(
-            [
-                (point.longitude, point.latitude)
-                for point in payload.route_path
-            ],
+            route_path,
             source_result.stations,
             energy_kind=payload.energy_kind,
             corridor_km=payload.corridor_km,
@@ -362,6 +372,10 @@ def search_planner_stations(
         ) from None
 
     warnings = ["표시된 상태에는 충전·주유 대기시간이 포함되지 않습니다."]
+    if payload.energy_kind == "fuel":
+        warnings.append(
+            "오피넷 공개 API는 현재 영업 여부를 제공하지 않으며, 경로 표본점 반경 5 km 안의 후보만 수집합니다."
+        )
     if any(candidate.station.status_observed_at is None for candidate in ranked):
         warnings.append("상태 조회시각이 없는 후보는 현재 이용 가능 여부를 직접 확인해야 합니다.")
     if payload.energy_kind == "fuel" and any(
@@ -387,6 +401,8 @@ def search_planner_stations(
                 pressure_bar=candidate.station.pressure_bar,
                 queue_vehicle_count=candidate.station.queue_vehicle_count,
                 trailer_pressure_bar=candidate.station.trailer_pressure_bar,
+                fuel_price_per_liter=candidate.station.fuel_price_per_liter,
+                fuel_price_observed_at=candidate.station.fuel_price_observed_at,
                 fuel_grades=list(candidate.station.fuel_grades),
                 fuel_grade_match=candidate.fuel_grade_match,
                 distance_to_route_km=candidate.distance_to_route_km,

@@ -36,7 +36,7 @@ export function Dashboard({ vehicle, onNavigate }: DashboardProps) {
           </button>
         ))}
       </div>
-      <div className="status-strip"><span className="status-dot" /><div><strong>차량 개인화와 선택형 실제 경로 조회는 FastAPI와 연결할 수 있습니다.</strong><span>충전소·수소충전소·주유소 위치와 실시간 상태, AI 모델은 아직 연결하지 않았습니다.</span></div></div>
+      <div className="status-strip"><span className="status-dot" /><div><strong>차량 개인화·실제 경로와 에너지원별 충전·주유소 공급자를 FastAPI에서 선택 연결합니다.</strong><span>오피넷은 가격을 제공하지만 현재 영업 상태는 제공하지 않으며, 생성형 매뉴얼 답변과 리콜 실제 API는 아직 선택·미연결 상태입니다.</span></div></div>
     </section>
   );
 }

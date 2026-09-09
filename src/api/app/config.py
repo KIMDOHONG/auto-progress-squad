@@ -45,6 +45,11 @@ class Settings:
     hydrogen_station_service_key: str | None = None
     hydrogen_station_timeout_seconds: float = 10.0
     hydrogen_station_cache_ttl_seconds: float = 300.0
+    opinet_service_key: str | None = None
+    opinet_timeout_seconds: float = 10.0
+    opinet_cache_ttl_seconds: float = 900.0
+    opinet_max_sample_points: int = 24
+    opinet_max_detail_requests: int = 15
 
     def __post_init__(self) -> None:
         if self.manual_search_mode not in {"keyword", "embedding", "hybrid"}:
@@ -92,6 +97,14 @@ class Settings:
             raise ValueError(
                 "APS_HYDROGEN_STATION_CACHE_TTL_SECONDS must not be negative"
             )
+        if self.opinet_timeout_seconds <= 0:
+            raise ValueError("APS_OPINET_TIMEOUT_SECONDS must be greater than zero")
+        if self.opinet_cache_ttl_seconds < 0:
+            raise ValueError("APS_OPINET_CACHE_TTL_SECONDS must not be negative")
+        if self.opinet_max_sample_points < 2:
+            raise ValueError("APS_OPINET_MAX_SAMPLE_POINTS must be at least 2")
+        if self.opinet_max_detail_requests < 1:
+            raise ValueError("APS_OPINET_MAX_DETAIL_REQUESTS must be at least 1")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -194,5 +207,20 @@ class Settings:
             ),
             hydrogen_station_cache_ttl_seconds=float(
                 os.getenv("APS_HYDROGEN_STATION_CACHE_TTL_SECONDS", "300")
+            ),
+            opinet_service_key=(
+                os.getenv("APS_OPINET_SERVICE_KEY", "").strip() or None
+            ),
+            opinet_timeout_seconds=float(
+                os.getenv("APS_OPINET_TIMEOUT_SECONDS", "10")
+            ),
+            opinet_cache_ttl_seconds=float(
+                os.getenv("APS_OPINET_CACHE_TTL_SECONDS", "900")
+            ),
+            opinet_max_sample_points=int(
+                os.getenv("APS_OPINET_MAX_SAMPLE_POINTS", "24")
+            ),
+            opinet_max_detail_requests=int(
+                os.getenv("APS_OPINET_MAX_DETAIL_REQUESTS", "15")
             ),
         )

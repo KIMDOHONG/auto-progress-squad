@@ -17,6 +17,7 @@ from .station_provider import (
     JsonStationProvider,
     KecoEvChargerProvider,
     KpetroHydrogenStationProvider,
+    OpinetFuelStationProvider,
     StationProvider,
 )
 from .routes import router
@@ -73,6 +74,14 @@ def create_app(
                             resolved_settings.hydrogen_station_cache_ttl_seconds
                         ),
                     )
+                )
+            if resolved_settings.opinet_service_key:
+                app.state.station_providers["fuel"] = OpinetFuelStationProvider(
+                    resolved_settings.opinet_service_key,
+                    timeout_seconds=resolved_settings.opinet_timeout_seconds,
+                    cache_ttl_seconds=resolved_settings.opinet_cache_ttl_seconds,
+                    max_sample_points=resolved_settings.opinet_max_sample_points,
+                    max_detail_requests=resolved_settings.opinet_max_detail_requests,
                 )
         app.state.manual_embedding_search = (
             EmbeddingManualSearcher(

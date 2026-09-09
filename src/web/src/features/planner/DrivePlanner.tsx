@@ -178,6 +178,9 @@ function StationCandidateCard({ station, fuelLabel }: { station: StationCandidat
     station.trailerPressureBar !== null
       ? `튜브트레일러 ${station.trailerPressureBar} bar`
       : null,
+    station.fuelPricePerLiter != null
+      ? `리터당 ${station.fuelPricePerLiter.toLocaleString()}원`
+      : null,
     station.fuelGradeMatch === "confirmed" ? `${fuelLabel} 취급 확인` : null,
     station.fuelGradeMatch === "unknown" ? `${fuelLabel} 취급 미확인` : null,
   ].filter(Boolean);
@@ -193,7 +196,9 @@ function StationCandidateCard({ station, fuelLabel }: { station: StationCandidat
         <span>전체 경로의 약 {station.routeProgressPercent}% 지점</span>
         {specifications.map((specification) => <span key={specification}>{specification}</span>)}
       </div>
-      {station.statusObservedAt ? <small>상태 확인 시각: {formatStationTimestamp(station.statusObservedAt)}</small> : <small>상태 확인 시각 없음 · 방문 전 직접 확인 필요</small>}
+      {station.energyKind === "fuel" ? (
+        station.fuelPriceObservedAt ? <small>가격 기준 시각: {formatStationTimestamp(station.fuelPriceObservedAt)}</small> : <small>가격 기준 시각 없음 · 방문 전 직접 확인 필요</small>
+      ) : station.statusObservedAt ? <small>상태 확인 시각: {formatStationTimestamp(station.statusObservedAt)}</small> : <small>상태 확인 시각 없음 · 방문 전 직접 확인 필요</small>}
       {station.sourceUrl ? <a href={station.sourceUrl} target="_blank" rel="noreferrer">공급자 원문 확인 ↗</a> : null}
     </article>
   );
@@ -205,7 +210,7 @@ function ExternalDataNotice({ kind, routeLookup, stationsIncluded }: { kind: Pla
       ? "실시간 대기·충전곡선·예상 충전시간"
       : kind === "hydrogen"
         ? "예상 대기시간·실제 충전 가능량"
-        : "실시간 가격·도로 우회거리"
+        : "현재 영업 상태·도로 우회거리"
     : kind === "electric"
       ? "충전소 위치·실시간 상태·충전곡선·충전시간"
       : kind === "hydrogen"

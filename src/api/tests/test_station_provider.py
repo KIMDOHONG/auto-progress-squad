@@ -14,6 +14,7 @@ from app.station_provider import (
     JsonStationProvider,
     KecoEvChargerProvider,
     KpetroHydrogenStationProvider,
+    OpinetFuelStationProvider,
     StationCandidate,
     StationProviderError,
     StationProviderNotConfiguredError,
@@ -437,6 +438,129 @@ def hydrogen_payload(items: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
+def opinet_payload(items: list[dict[str, object]]) -> dict[str, object]:
+    return {"RESULT": {"OIL": items}}
+
+
+def test_opinet_provider_combines_route_radius_and_station_detail() -> None:
+    requested: list[tuple[str, dict[str, list[str]]]] = []
+    longitude, latitude = OpinetFuelStationProvider._from_katec.transform(
+        314871.8, 544012.0
+    )
+
+    def transport(url: str, timeout_seconds: float) -> dict[str, object]:
+        assert timeout_seconds == 4.0
+        parsed = urlparse(url)
+        query = parse_qs(parsed.query)
+        requested.append((parsed.path, query))
+        assert query["certkey"] == ["abc+123/="]
+        if parsed.path.endswith("/aroundAll.do"):
+            assert query["prodcd"] == ["B034"]
+            assert query["radius"] == ["5000"]
+            return opinet_payload(
+                [
+                    {
+                        "UNI_ID": "A0010207",
+                        "OS_NM": "SK서광주유소",
+                        "PRICE": "1920",
+                        "GIS_X_COOR": "314871.8",
+                        "GIS_Y_COOR": "544012.0",
+                    }
+                ]
+            )
+        return opinet_payload(
+            [
+                {
+                    "UNI_ID": "A0010207",
+                    "OS_NM": "SK서광주유소",
+                    "NEW_ADR": "서울 강남구 역삼로 142",
+                    "GIS_X_COOR": "314871.8",
+                    "GIS_Y_COOR": "544012.0",
+                    "OIL_PRICE": [
+                        {
+                            "PRODCD": "B034",
+                            "PRICE": "1920",
+                            "TRADE_DT": "20250723",
+                            "TRADE_TM": "145312",
+                        }
+                    ],
+                }
+            ]
+        )
+
+    provider = OpinetFuelStationProvider(
+        "abc%2B123%2F%3D",
+        timeout_seconds=4.0,
+        max_sample_points=2,
+        transport=transport,
+    )
+    result = provider.list_stations_near_route(
+        ((longitude - 0.01, latitude), (longitude + 0.01, latitude)),
+        corridor_km=5,
+        limit=5,
+        fuel_grade="premium",
+    )
+
+    assert len(result.stations) == 1
+    station = result.stations[0]
+    assert station.station_id == "A0010207"
+    assert station.address == "서울 강남구 역삼로 142"
+    assert station.fuel_grades == ("premium",)
+    assert station.fuel_price_per_liter == 1920
+    assert station.status == "unknown"
+    assert station.status_observed_at is None
+    assert station.fuel_price_observed_at == "2025-07-23T14:53:12+09:00"
+    assert [path for path, _ in requested].count("/api/aroundAll.do") == 2
+    assert [path for path, _ in requested].count("/api/detailById.do") == 1
+
+
+def test_opinet_provider_does_not_infer_unpublished_special_fuel_grade() -> None:
+    longitude, latitude = OpinetFuelStationProvider._from_katec.transform(
+        314871.8, 544012.0
+    )
+
+    def transport(url: str, timeout_seconds: float) -> dict[str, object]:
+        del timeout_seconds
+        path = urlparse(url).path
+        if path.endswith("/aroundAll.do"):
+            return opinet_payload(
+                [
+                    {
+                        "UNI_ID": "A0010207",
+                        "OS_NM": "SK서광주유소",
+                        "PRICE": "1920",
+                        "GIS_X_COOR": "314871.8",
+                        "GIS_Y_COOR": "544012.0",
+                    }
+                ]
+            )
+        return opinet_payload(
+            [
+                {
+                    "UNI_ID": "A0010207",
+                    "OS_NM": "SK서광주유소",
+                    "NEW_ADR": "서울 강남구 역삼로 142",
+                    "GIS_X_COOR": "314871.8",
+                    "GIS_Y_COOR": "544012.0",
+                }
+            ]
+        )
+
+    provider = OpinetFuelStationProvider(
+        "test-key", max_sample_points=2, transport=transport
+    )
+    result = provider.list_stations_near_route(
+        ((longitude - 0.01, latitude), (longitude + 0.01, latitude)),
+        corridor_km=5,
+        limit=5,
+        fuel_grade="super-premium",
+    )
+
+    assert result.stations[0].fuel_grades == ()
+    assert result.stations[0].fuel_price_per_liter is None
+    assert result.stations[0].fuel_price_observed_at is None
+
+
 def test_kpetro_provider_combines_operation_and_latest_realtime_data() -> None:
     requested_paths: list[str] = []
 
@@ -619,6 +743,7 @@ def test_official_providers_are_created_independently_from_settings(
         ev_charger_service_key="test-key",
         ev_charger_region_codes=("26",),
         hydrogen_station_service_key="test-key",
+        opinet_service_key="test-key",
     )
     with TestClient(create_app(configured)) as client:
         assert client.app.state.station_provider is None
@@ -628,6 +753,9 @@ def test_official_providers_are_created_independently_from_settings(
         assert isinstance(
             client.app.state.station_providers["hydrogen"],
             KpetroHydrogenStationProvider,
+        )
+        assert isinstance(
+            client.app.state.station_providers["fuel"], OpinetFuelStationProvider
         )
         response = client.post(
             "/api/v1/planner/stations",
@@ -643,7 +771,7 @@ def test_official_providers_are_created_independently_from_settings(
     assert response.status_code == 503
     assert response.json()["error"] == {
         "code": "station_source_not_configured",
-        "message": "충전·주유소 데이터 공급자가 설정되지 않았습니다.",
+        "message": "선택한 동력원의 충전·주유소 데이터 공급자가 설정되지 않았습니다.",
         "retryable": False,
         "details": None,
     }

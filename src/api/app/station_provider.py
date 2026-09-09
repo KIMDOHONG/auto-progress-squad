@@ -12,6 +12,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
+from pyproj import CRS, Transformer
+
 
 EnergyKind = Literal["electric", "hydrogen", "fuel"]
 StationStatus = Literal["available", "busy", "unavailable", "unknown"]
@@ -41,6 +43,8 @@ class StationCandidate:
     pressure_bar: int | None = None
     queue_vehicle_count: int | None = None
     trailer_pressure_bar: float | None = None
+    fuel_price_per_liter: int | None = None
+    fuel_price_observed_at: str | None = None
     fuel_grades: tuple[str, ...] = ()
     source_url: str | None = None
 
@@ -129,6 +133,8 @@ def validate_station_source_result(
             and station.trailer_pressure_bar < 0
         ):
             raise StationProviderError("수소 튜브트레일러 압력은 음수일 수 없습니다.")
+        if station.fuel_price_per_liter is not None and station.fuel_price_per_liter <= 0:
+            raise StationProviderError("주유소 가격은 0보다 커야 합니다.")
 
 
 def _project_km(
@@ -792,6 +798,289 @@ class KpetroHydrogenStationProvider:
         return result
 
 
+class OpinetFuelStationProvider:
+    """Reads route-nearby fuel prices from the official Opinet OpenAPI."""
+
+    source_name = "한국석유공사 오피넷 주유소 가격정보"
+    source_url = "https://www.opinet.co.kr/user/custapi/openApiInfoDtl.do?apiId=3"
+    detail_source_url = "https://www.opinet.co.kr/user/custapi/openApiInfoDtl.do?apiId=1"
+    _around_endpoint = "https://www.opinet.co.kr/api/aroundAll.do"
+    _detail_endpoint = "https://www.opinet.co.kr/api/detailById.do"
+    _seoul_timezone = timezone(timedelta(hours=9))
+    _product_code_by_grade = {
+        "regular": "B027",
+        "premium": "B034",
+        "diesel": "D047",
+        # Opinet's public product codes do not separately identify these grades.
+        "super-premium": "B034",
+        "high-cetane": "D047",
+    }
+    _confirmed_grades = frozenset({"regular", "premium", "diesel"})
+    _katec_crs = CRS.from_proj4(
+        "+proj=tmerc +lat_0=38 +lon_0=128 +k=0.9999 "
+        "+x_0=400000 +y_0=600000 +ellps=bessel "
+        "+towgs84=-146.43,507.89,681.46 +units=m +no_defs"
+    )
+    _to_katec = Transformer.from_crs("EPSG:4326", _katec_crs, always_xy=True)
+    _from_katec = Transformer.from_crs(_katec_crs, "EPSG:4326", always_xy=True)
+
+    def __init__(
+        self,
+        service_key: str,
+        *,
+        timeout_seconds: float = 10.0,
+        cache_ttl_seconds: float = 900.0,
+        max_sample_points: int = 24,
+        max_detail_requests: int = 15,
+        transport: StationJsonTransport | None = None,
+    ) -> None:
+        normalized_key = unquote(service_key.strip())
+        if not normalized_key:
+            raise ValueError("Opinet service key is required")
+        if timeout_seconds <= 0:
+            raise ValueError("Opinet timeout must be greater than zero")
+        if cache_ttl_seconds < 0:
+            raise ValueError("Opinet cache TTL must not be negative")
+        if max_sample_points < 2:
+            raise ValueError("Opinet sample point limit must be at least 2")
+        if max_detail_requests < 1:
+            raise ValueError("Opinet detail request limit must be at least 1")
+        self._service_key = normalized_key
+        self._timeout_seconds = timeout_seconds
+        self._cache_ttl_seconds = cache_ttl_seconds
+        self._max_sample_points = max_sample_points
+        self._max_detail_requests = max_detail_requests
+        self._transport = transport or _default_station_json_transport
+        self._cache: dict[str, tuple[float, Mapping[str, Any]]] = {}
+
+    @staticmethod
+    def _items(payload: Mapping[str, Any], label: str) -> list[Mapping[str, Any]]:
+        result = payload.get("RESULT")
+        root = result if isinstance(result, Mapping) else payload
+        raw_items = root.get("OIL")
+        if raw_items in (None, ""):
+            return []
+        if isinstance(raw_items, Mapping):
+            raw_items = [raw_items]
+        if not isinstance(raw_items, list) or any(
+            not isinstance(item, Mapping) for item in raw_items
+        ):
+            raise StationProviderError(f"오피넷 {label} 응답 형식이 올바르지 않습니다.")
+        return [item for item in raw_items if isinstance(item, Mapping)]
+
+    def _cached_request(self, cache_key: str, endpoint: str, params: Mapping[str, str]) -> Mapping[str, Any]:
+        now = time.monotonic()
+        cached = self._cache.get(cache_key)
+        if cached is not None and now < cached[0]:
+            return cached[1]
+        payload = self._transport(
+            f"{endpoint}?{urlencode(params)}", self._timeout_seconds
+        )
+        self._cache[cache_key] = (now + self._cache_ttl_seconds, payload)
+        return payload
+
+    @staticmethod
+    def _sample_route_points(
+        route_path: Sequence[tuple[float, float]], max_points: int
+    ) -> tuple[tuple[float, float], ...]:
+        geometry = _prepare_route_geometry(route_path)
+        ideal_count = max(2, math.ceil(geometry.total_length / 5.0) + 1)
+        sample_count = min(max_points, ideal_count)
+        targets = [
+            geometry.total_length * index / (sample_count - 1)
+            for index in range(sample_count)
+        ]
+        samples: list[tuple[float, float]] = []
+        segment_index = 0
+        traversed = 0.0
+        for target in targets:
+            while (
+                segment_index < len(geometry.segment_lengths) - 1
+                and traversed + geometry.segment_lengths[segment_index] < target
+            ):
+                traversed += geometry.segment_lengths[segment_index]
+                segment_index += 1
+            segment_length = geometry.segment_lengths[segment_index]
+            ratio = 0.0 if segment_length == 0 else (target - traversed) / segment_length
+            start = route_path[segment_index]
+            end = route_path[segment_index + 1]
+            samples.append(
+                (
+                    start[0] + (end[0] - start[0]) * ratio,
+                    start[1] + (end[1] - start[1]) * ratio,
+                )
+            )
+        return tuple(dict.fromkeys(samples))
+
+    @classmethod
+    def _coordinates(cls, item: Mapping[str, Any]) -> tuple[float, float] | None:
+        try:
+            x = float(item.get("GIS_X_COOR"))
+            y = float(item.get("GIS_Y_COOR"))
+            longitude, latitude = cls._from_katec.transform(x, y)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if not _finite_coordinate(longitude, latitude):
+            return None
+        return longitude, latitude
+
+    @classmethod
+    def _price_observed_at(
+        cls, detail: Mapping[str, Any], product_code: str
+    ) -> str | None:
+        prices = detail.get("OIL_PRICE", [])
+        if isinstance(prices, Mapping):
+            prices = [prices]
+        if not isinstance(prices, list):
+            return None
+        for price in prices:
+            if not isinstance(price, Mapping) or str(price.get("PRODCD", "")).strip() != product_code:
+                continue
+            raw = f"{str(price.get('TRADE_DT', '')).strip()}{str(price.get('TRADE_TM', '')).strip()}"
+            try:
+                return datetime.strptime(raw, "%Y%m%d%H%M%S").replace(
+                    tzinfo=cls._seoul_timezone
+                ).isoformat()
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
+    def _price(item: Mapping[str, Any]) -> int | None:
+        try:
+            price = int(float(item.get("PRICE")))
+        except (TypeError, ValueError):
+            return None
+        return price if price > 0 else None
+
+    def _around_items(
+        self, longitude: float, latitude: float, product_code: str
+    ) -> list[Mapping[str, Any]]:
+        x, y = self._to_katec.transform(longitude, latitude)
+        cache_key = f"around:{product_code}:{round(x)}:{round(y)}"
+        payload = self._cached_request(
+            cache_key,
+            self._around_endpoint,
+            {
+                "out": "json",
+                "x": f"{x:.1f}",
+                "y": f"{y:.1f}",
+                "radius": "5000",
+                "sort": "2",
+                "prodcd": product_code,
+                "certkey": self._service_key,
+            },
+        )
+        return self._items(payload, "반경 조회")
+
+    def _detail(self, station_id: str) -> Mapping[str, Any] | None:
+        payload = self._cached_request(
+            f"detail:{station_id}",
+            self._detail_endpoint,
+            {"out": "json", "id": station_id, "certkey": self._service_key},
+        )
+        return next(iter(self._items(payload, "상세 조회")), None)
+
+    def list_stations(self, energy_kind: EnergyKind) -> StationSourceResult:
+        del energy_kind
+        raise StationProviderNotConfiguredError(
+            "오피넷 주유소는 선택 경로 좌표와 지정연료가 필요합니다."
+        )
+
+    def list_stations_near_route(
+        self,
+        route_path: Sequence[tuple[float, float]],
+        *,
+        corridor_km: float,
+        limit: int,
+        fuel_grade: str | None,
+    ) -> StationSourceResult:
+        normalized_grade = fuel_grade.strip().lower() if fuel_grade else ""
+        product_code = self._product_code_by_grade.get(normalized_grade)
+        if product_code is None:
+            raise StationProviderNotConfiguredError(
+                "선택한 지정연료는 오피넷 공개 제품코드로 조회할 수 없습니다."
+            )
+
+        around_by_id: dict[str, Mapping[str, Any]] = {}
+        for longitude, latitude in self._sample_route_points(
+            route_path, self._max_sample_points
+        ):
+            for item in self._around_items(longitude, latitude, product_code):
+                station_id = str(item.get("UNI_ID", "")).strip()
+                if station_id:
+                    around_by_id.setdefault(station_id, item)
+
+        preliminary: list[StationCandidate] = []
+        confirmed = normalized_grade in self._confirmed_grades
+        for station_id, item in around_by_id.items():
+            name = str(item.get("OS_NM", "")).strip()
+            coordinates = self._coordinates(item)
+            if not name or coordinates is None:
+                continue
+            preliminary.append(
+                StationCandidate(
+                    station_id=station_id,
+                    name=name,
+                    address=name,
+                    longitude=coordinates[0],
+                    latitude=coordinates[1],
+                    energy_kind="fuel",
+                    fuel_price_per_liter=self._price(item) if confirmed else None,
+                    fuel_grades=(normalized_grade,) if confirmed else (),
+                    source_url=self.detail_source_url,
+                )
+            )
+
+        detail_limit = min(
+            self._max_detail_requests,
+            max(limit * 3, limit),
+        )
+        nearest = rank_route_stations(
+            route_path,
+            preliminary,
+            energy_kind="fuel",
+            corridor_km=min(corridor_km, 5.0),
+            limit=detail_limit,
+            fuel_grade=normalized_grade,
+        )
+        stations: list[StationCandidate] = []
+        for ranked in nearest:
+            detail = self._detail(ranked.station.station_id)
+            if detail is None:
+                continue
+            address = str(detail.get("NEW_ADR") or detail.get("VAN_ADR") or "").strip()
+            coordinates = self._coordinates(detail) or (
+                ranked.station.longitude,
+                ranked.station.latitude,
+            )
+            if not address:
+                continue
+            stations.append(
+                StationCandidate(
+                    station_id=ranked.station.station_id,
+                    name=str(detail.get("OS_NM") or ranked.station.name).strip(),
+                    address=address,
+                    longitude=coordinates[0],
+                    latitude=coordinates[1],
+                    energy_kind="fuel",
+                    status="unknown",
+                    fuel_price_observed_at=(
+                        self._price_observed_at(detail, product_code) if confirmed else None
+                    ),
+                    fuel_price_per_liter=ranked.station.fuel_price_per_liter,
+                    fuel_grades=ranked.station.fuel_grades,
+                    source_url=self.detail_source_url,
+                )
+            )
+
+        result = StationSourceResult(
+            stations=tuple(stations), retrieved_at=datetime.now(UTC).isoformat()
+        )
+        validate_station_source_result(self.source_name, self.source_url, result)
+        return result
+
+
 class JsonStationProvider:
     """Reads a normalized, source-attributed station snapshot from a local file."""
 
@@ -851,6 +1140,16 @@ class JsonStationProvider:
                 trailer_pressure_bar=(
                     float(item["trailer_pressure_bar"])
                     if item.get("trailer_pressure_bar") is not None
+                    else None
+                ),
+                fuel_price_per_liter=(
+                    int(item["fuel_price_per_liter"])
+                    if item.get("fuel_price_per_liter") is not None
+                    else None
+                ),
+                fuel_price_observed_at=(
+                    str(item["fuel_price_observed_at"])
+                    if item.get("fuel_price_observed_at") is not None
                     else None
                 ),
                 fuel_grades=tuple(str(grade).strip() for grade in fuel_grades_payload),

@@ -73,16 +73,19 @@ $originalClientId = [Environment]::GetEnvironmentVariable("APS_NAVER_MAPS_CLIENT
 $originalClientSecret = [Environment]::GetEnvironmentVariable("APS_NAVER_MAPS_CLIENT_SECRET", "Process")
 $originalEvChargerServiceKey = [Environment]::GetEnvironmentVariable("APS_EV_CHARGER_SERVICE_KEY", "Process")
 $originalHydrogenStationServiceKey = [Environment]::GetEnvironmentVariable("APS_HYDROGEN_STATION_SERVICE_KEY", "Process")
+$originalOpinetServiceKey = [Environment]::GetEnvironmentVariable("APS_OPINET_SERVICE_KEY", "Process")
 $originalApiBaseUrl = [Environment]::GetEnvironmentVariable("VITE_API_BASE_URL", "Process")
 $originalCorsOrigins = [Environment]::GetEnvironmentVariable("APS_CORS_ORIGINS", "Process")
 $clientIdValue = $originalClientId
 $clientSecretValue = $originalClientSecret
 $evChargerServiceKeyValue = $originalEvChargerServiceKey
 $hydrogenStationServiceKeyValue = $originalHydrogenStationServiceKey
+$opinetServiceKeyValue = $originalOpinetServiceKey
 $clientIdPointer = [IntPtr]::Zero
 $clientSecretPointer = [IntPtr]::Zero
 $evChargerServiceKeyPointer = [IntPtr]::Zero
 $hydrogenStationServiceKeyPointer = [IntPtr]::Zero
+$opinetServiceKeyPointer = [IntPtr]::Zero
 $apiProcess = $null
 $webProcess = $null
 
@@ -114,6 +117,13 @@ try {
         $hydrogenStationServiceKeyValue = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($hydrogenStationServiceKeyPointer)
     }
 
+    if ([string]::IsNullOrWhiteSpace($opinetServiceKeyValue)) {
+        Write-Host "오피넷 인증키도 파일에 저장하지 않고 자식 백엔드에만 전달합니다."
+        $opinetServiceKeySecure = Read-Host "오피넷 인증키를 붙여 넣거나 아직 없으면 Enter" -AsSecureString
+        $opinetServiceKeyPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($opinetServiceKeySecure)
+        $opinetServiceKeyValue = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($opinetServiceKeyPointer)
+    }
+
     $env:APS_NAVER_MAPS_CLIENT_ID = $clientIdValue
     $env:APS_NAVER_MAPS_CLIENT_SECRET = $clientSecretValue
     if ([string]::IsNullOrWhiteSpace($evChargerServiceKeyValue)) {
@@ -127,6 +137,12 @@ try {
     }
     else {
         $env:APS_HYDROGEN_STATION_SERVICE_KEY = $hydrogenStationServiceKeyValue
+    }
+    if ([string]::IsNullOrWhiteSpace($opinetServiceKeyValue)) {
+        Remove-Item Env:APS_OPINET_SERVICE_KEY -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:APS_OPINET_SERVICE_KEY = $opinetServiceKeyValue
     }
     $env:VITE_API_BASE_URL = "http://127.0.0.1:$ApiPort"
     $configuredCorsOrigins = @(
@@ -157,10 +173,12 @@ try {
     $clientSecretValue = $null
     $evChargerServiceKeyValue = $null
     $hydrogenStationServiceKeyValue = $null
+    $opinetServiceKeyValue = $null
     if ($originalClientId) { $env:APS_NAVER_MAPS_CLIENT_ID = $originalClientId } else { Remove-Item Env:APS_NAVER_MAPS_CLIENT_ID -ErrorAction SilentlyContinue }
     if ($originalClientSecret) { $env:APS_NAVER_MAPS_CLIENT_SECRET = $originalClientSecret } else { Remove-Item Env:APS_NAVER_MAPS_CLIENT_SECRET -ErrorAction SilentlyContinue }
     if ($originalEvChargerServiceKey) { $env:APS_EV_CHARGER_SERVICE_KEY = $originalEvChargerServiceKey } else { Remove-Item Env:APS_EV_CHARGER_SERVICE_KEY -ErrorAction SilentlyContinue }
     if ($originalHydrogenStationServiceKey) { $env:APS_HYDROGEN_STATION_SERVICE_KEY = $originalHydrogenStationServiceKey } else { Remove-Item Env:APS_HYDROGEN_STATION_SERVICE_KEY -ErrorAction SilentlyContinue }
+    if ($originalOpinetServiceKey) { $env:APS_OPINET_SERVICE_KEY = $originalOpinetServiceKey } else { Remove-Item Env:APS_OPINET_SERVICE_KEY -ErrorAction SilentlyContinue }
     if ($originalCorsOrigins) { $env:APS_CORS_ORIGINS = $originalCorsOrigins } else { Remove-Item Env:APS_CORS_ORIGINS -ErrorAction SilentlyContinue }
 
     $webUrl = "http://127.0.0.1:$WebPort/auto-progress-squad/"
@@ -191,10 +209,12 @@ finally {
     if ($clientSecretPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($clientSecretPointer) }
     if ($evChargerServiceKeyPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($evChargerServiceKeyPointer) }
     if ($hydrogenStationServiceKeyPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($hydrogenStationServiceKeyPointer) }
+    if ($opinetServiceKeyPointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($opinetServiceKeyPointer) }
     if ($originalClientId) { $env:APS_NAVER_MAPS_CLIENT_ID = $originalClientId } else { Remove-Item Env:APS_NAVER_MAPS_CLIENT_ID -ErrorAction SilentlyContinue }
     if ($originalClientSecret) { $env:APS_NAVER_MAPS_CLIENT_SECRET = $originalClientSecret } else { Remove-Item Env:APS_NAVER_MAPS_CLIENT_SECRET -ErrorAction SilentlyContinue }
     if ($originalEvChargerServiceKey) { $env:APS_EV_CHARGER_SERVICE_KEY = $originalEvChargerServiceKey } else { Remove-Item Env:APS_EV_CHARGER_SERVICE_KEY -ErrorAction SilentlyContinue }
     if ($originalHydrogenStationServiceKey) { $env:APS_HYDROGEN_STATION_SERVICE_KEY = $originalHydrogenStationServiceKey } else { Remove-Item Env:APS_HYDROGEN_STATION_SERVICE_KEY -ErrorAction SilentlyContinue }
+    if ($originalOpinetServiceKey) { $env:APS_OPINET_SERVICE_KEY = $originalOpinetServiceKey } else { Remove-Item Env:APS_OPINET_SERVICE_KEY -ErrorAction SilentlyContinue }
     if ($originalApiBaseUrl) { $env:VITE_API_BASE_URL = $originalApiBaseUrl } else { Remove-Item Env:VITE_API_BASE_URL -ErrorAction SilentlyContinue }
     if ($originalCorsOrigins) { $env:APS_CORS_ORIGINS = $originalCorsOrigins } else { Remove-Item Env:APS_CORS_ORIGINS -ErrorAction SilentlyContinue }
 }
